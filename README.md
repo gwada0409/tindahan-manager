@@ -2,11 +2,13 @@
 
 Tindahan Manager is a local-first point-of-sale and store-management Progressive Web App for small retail and sari-sari store operations. It uses React, TypeScript, Vite, Dexie/IndexedDB, Zustand, Tailwind CSS, and optional Supabase services.
 
+Phase 22 repairs cross-device writes created after account linking: authenticated repository writes now use the selected cloud store even when local store settings are absent, stranded per-device queue entries are adopted safely, and products without a category receive a synchronized General category.
+
 Phase 21 completes account-linking upload and multi-device pull for inventory and completed sales, and adds owner-controlled restoration for revoked device registrations without deleting business data.
 
 Phase 19 hardens the deployed browser and cloud boundary with forced RLS, anonymous-access revocation, bounded new text inputs, a restrictive browser security policy, and audited backup restores.
 
-See the [Phase 21 synchronization and restore record](docs/phase-21-inventory-sales-restore.md), [Phase 20 sync repair](docs/phase-20-sync-device-repair.md), [Phase 19 record](docs/phase-19-security-hardening.md), [Phase 18 record](docs/phase-18-performance-free-tier.md), [performance guide](docs/performance-and-free-tier.md), [Phase 17 record](docs/phase-17-backup-recovery.md), [recovery guide](docs/recovery-guide.md), [Phase 16 record](docs/phase-16-realtime-devices.md), [device-management guide](docs/device-management.md), [Phase 15 record](docs/phase-15-sync-status-ui.md), [sync-status guide](docs/sync-status.md), [Phase 14 record](docs/phase-14-conflict-resolution.md), [conflict guide](docs/conflict-resolution.md), [migration guide](docs/migration-guide.md), [sync protocol](docs/sync-protocol.md), [cloud schema](docs/database-schema.md), [security model](docs/security-model.md), and [audit/refactor record](docs/offline-sync-refactor.md).
+See the [Phase 22 cross-device sync repair](docs/phase-22-cross-device-sync.md), [Phase 21 synchronization and restore record](docs/phase-21-inventory-sales-restore.md), [Phase 20 sync repair](docs/phase-20-sync-device-repair.md), [Phase 19 record](docs/phase-19-security-hardening.md), [Phase 18 record](docs/phase-18-performance-free-tier.md), [performance guide](docs/performance-and-free-tier.md), [Phase 17 record](docs/phase-17-backup-recovery.md), [recovery guide](docs/recovery-guide.md), [Phase 16 record](docs/phase-16-realtime-devices.md), [device-management guide](docs/device-management.md), [Phase 15 record](docs/phase-15-sync-status-ui.md), [sync-status guide](docs/sync-status.md), [Phase 14 record](docs/phase-14-conflict-resolution.md), [conflict guide](docs/conflict-resolution.md), [migration guide](docs/migration-guide.md), [sync protocol](docs/sync-protocol.md), [cloud schema](docs/database-schema.md), [security model](docs/security-model.md), and [audit/refactor record](docs/offline-sync-refactor.md).
 
 ## Implemented features
 
@@ -19,6 +21,7 @@ See the [Phase 21 synchronization and restore record](docs/phase-21-inventory-sa
 - UUID record IDs, persistent browser identity, sync metadata, soft deletion, and non-destructive IndexedDB migrations through v7
 - Optional Supabase Auth sign-up, email/password sign-in, session restoration, sign-out, email confirmation redirect, and password recovery
 - Durable queueing, push/pull, and explicit resumable account linking for catalog data, inventory batches/movements, and completed product sales
+- Authenticated post-link writes use the active account/store context, with device-scoped recovery for records previously stranded under the unassigned local-store marker
 - Atomic, idempotent upload and incremental pull of completed sales with complete items, payments, debt effects, stock-movement envelopes, and audit records
 - Movement-based multi-device inventory synchronization with duplicate suppression, transactional quantity caches, and reconciliation reporting
 - Idempotent synchronization for Utang, GCash, bills, employees/payroll, and vault

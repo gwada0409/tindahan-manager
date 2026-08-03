@@ -3,6 +3,7 @@ import type { Permission, UserRole } from '@/types';
 import type { AuthResolution, AuthState } from './auth.types';
 import { authService } from './auth.service';
 import { hasRolePermission } from './permissions';
+import { setAuthenticatedRepositoryContext } from '@/repositories/repositoryContext';
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -10,6 +11,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 function resolutionState(resolution: AuthResolution): Partial<AuthState> {
   if (resolution.status === 'unauthenticated') {
+    setAuthenticatedRepositoryContext(null);
     return {
       user: null,
       pendingIdentity: null,
@@ -20,6 +22,7 @@ function resolutionState(resolution: AuthResolution): Partial<AuthState> {
   }
 
   if (resolution.status === 'selecting-store') {
+    setAuthenticatedRepositoryContext(null);
     return {
       user: null,
       pendingIdentity: resolution.identity,
@@ -29,6 +32,11 @@ function resolutionState(resolution: AuthResolution): Partial<AuthState> {
     };
   }
 
+  setAuthenticatedRepositoryContext({
+    storeId: resolution.user.storeId,
+    deviceId: resolution.user.deviceId,
+    updatedBy: resolution.user.id,
+  });
   return {
     user: resolution.user,
     pendingIdentity: null,
@@ -53,6 +61,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
           : null,
       });
     } catch (error) {
+      setAuthenticatedRepositoryContext(null);
       set({
         user: null,
         pendingIdentity: null,
@@ -89,6 +98,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
         const resolution = await authService.login(credentials);
         set({ ...resolutionState(resolution), error: null });
       } catch (error) {
+        setAuthenticatedRepositoryContext(null);
         set({ user: null, pendingIdentity: null, memberships: [], status: 'unauthenticated', sessionMode: null, error: getErrorMessage(error, 'Login failed') });
         throw error;
       }
@@ -105,6 +115,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
           notice: 'Development quick access is active. This is not a cloud account.',
         });
       } catch (error) {
+        setAuthenticatedRepositoryContext(null);
         set({ user: null, pendingIdentity: null, memberships: [], status: 'unauthenticated', sessionMode: null, error: getErrorMessage(error, 'Development login failed') });
         throw error;
       }
@@ -117,6 +128,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
         if (result.resolution) {
           set({ ...resolutionState(result.resolution), error: null });
         } else {
+          setAuthenticatedRepositoryContext(null);
           set({
             status: 'unauthenticated',
             error: null,
@@ -125,6 +137,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
         }
         return result;
       } catch (error) {
+        setAuthenticatedRepositoryContext(null);
         set({ user: null, pendingIdentity: null, memberships: [], status: 'unauthenticated', sessionMode: null, error: getErrorMessage(error, 'Signup failed') });
         throw error;
       }
@@ -166,6 +179,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
     logout: async () => {
       set({ status: 'loading', error: null });
       await authService.logout();
+      setAuthenticatedRepositoryContext(null);
       set({
         user: null,
         profile: null,

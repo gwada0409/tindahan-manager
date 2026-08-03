@@ -32,7 +32,7 @@ Use this for a new browser or device. After the backup, the explicit choice clea
 7. Bounded synchronization runs continue until that queue is empty.
 8. Counts and totals are recalculated before completion.
 
-A failed run retains its backup, processed-table list, queue entries, and error. Reopen the wizard and choose the same mode to resume. Already processed tables are skipped.
+A failed run retains its backup, processed-table list, queue entries, and error. Reopen the wizard and choose the same mode to resume. Already processed tables are skipped. After linking completes, authenticated writes use the selected cloud store directly even when the optional local `storeSettings` row is absent. Phase 22 adopts only matching current-device changes stranded by older builds under `local-store-unassigned`.
 
 ## Validation
 

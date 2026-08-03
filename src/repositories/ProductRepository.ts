@@ -4,6 +4,9 @@ import type { Product } from '../types';
 import { db } from '../db/database';
 import type { RepositoryContextProvider } from './repositoryContext';
 import { getDefaultRepositoryContext } from './repositoryContext';
+import type { CreateEntityInput, RepositoryWriteOptions } from './index';
+import { categoryRepo } from './CategoryRepository';
+import { GENERAL_CATEGORY_ID, GENERAL_CATEGORY_NAME } from '@/domain/inventory/defaultCategory';
 
 export class ProductRepository extends BaseRepository<Product> {
   constructor(
@@ -14,6 +17,17 @@ export class ProductRepository extends BaseRepository<Product> {
       : undefined
   ) {
     super(table, contextProvider, queue);
+  }
+
+  async create(item: CreateEntityInput<Product>, options: RepositoryWriteOptions = {}): Promise<Product> {
+    let categoryId = item.categoryId;
+    if (!categoryId || categoryId === 'default') {
+      categoryId = GENERAL_CATEGORY_ID;
+      if (!(await db.categories.get(categoryId))) {
+        await categoryRepo.bulkUpsert([{ id: categoryId, name: GENERAL_CATEGORY_NAME }], options);
+      }
+    }
+    return super.create({ ...item, categoryId }, options);
   }
 
   async getLowStockProducts(): Promise<Product[]> {

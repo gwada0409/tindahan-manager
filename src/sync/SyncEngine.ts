@@ -32,6 +32,7 @@ export class SyncEngine {
       const connectivityCheckedAt=new Date().toISOString();
       if(!await this.adapter.isReachable(context.storeId)){const result={attempted:0,processed:0,failed:0,pulled:0,skippedReason:'Cloud connection is temporarily unavailable. Your work remains saved on this device.'}; this.publish({...this.snapshot,activity:'offline',pending:await this.queue.count(context.storeId),lastResult:result,message:result.skippedReason,lastConnectivityCheckAt:connectivityCheckedAt}); return result;}
       await this.queue.recover();
+      await this.queue.adoptUnassignedChanges(context.storeId,context.userId,context.deviceId);
       const push=await new PushSyncService(this.queue,this.adapter).pushReady(context.storeId);
       const lastPushAt=new Date().toISOString();
       const pulled=this.pullService?await this.pullService.pullAll(context.storeId):0;
