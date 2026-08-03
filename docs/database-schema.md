@@ -20,9 +20,10 @@ Apply migrations in timestamp order:
 202608010004_phase16_realtime_devices.sql
 202608030001_phase18_retention_indexes.sql
 202608030002_phase19_security_hardening.sql
+202608030003_phase20_sync_device_repair.sql
 ```
 
-The first migration creates account ownership. The second adds business tables, role/device-aware Row Level Security, store settings, indexes, operation-ID constraints, and generated-compatible TypeScript types.
+The first migration creates account ownership. The second adds business tables, role/device-aware Row Level Security, store settings, indexes, operation-ID constraints, and generated-compatible TypeScript types. Phase 20 restores the Phase 16 device timestamp, owner policy/RPC, and Realtime registrations without rewriting business rows.
 
 ## Included tables
 

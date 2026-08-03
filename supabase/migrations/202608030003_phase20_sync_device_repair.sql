@@ -1,4 +1,4 @@
--- Phase 16: Realtime notifications and owner-managed device revocation.
+-- Phase 20: repair Phase 16 device activity, owner access, and Realtime registration without rewriting business rows.
 alter table public.devices add column if not exists last_sync_at timestamptz;
 
 do $$
@@ -37,8 +37,7 @@ $$;
 revoke all on function public.revoke_store_device(uuid, uuid) from public;
 grant execute on function public.revoke_store_device(uuid, uuid) to authenticated;
 
--- Realtime carries only invalidation notices. Clients still fetch authoritative
--- rows through the incremental pull RPC and recover missed notices periodically.
+-- Realtime only invalidates local cursors; authenticated pull RPCs remain authoritative.
 do $$
 declare table_name text;
 begin

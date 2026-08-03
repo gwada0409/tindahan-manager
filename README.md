@@ -2,9 +2,11 @@
 
 Tindahan Manager is a local-first point-of-sale and store-management Progressive Web App for small retail and sari-sari store operations. It uses React, TypeScript, Vite, Dexie/IndexedDB, Zustand, Tailwind CSS, and optional Supabase services.
 
+Phase 20 repairs device activity tracking and Realtime registration for existing Supabase projects without rewriting business records.
+
 Phase 19 hardens the deployed browser and cloud boundary with forced RLS, anonymous-access revocation, bounded new text inputs, a restrictive browser security policy, and audited backup restores.
 
-See the [Phase 19 record](docs/phase-19-security-hardening.md), [Phase 18 record](docs/phase-18-performance-free-tier.md), [performance guide](docs/performance-and-free-tier.md), [Phase 17 record](docs/phase-17-backup-recovery.md), [recovery guide](docs/recovery-guide.md), [Phase 16 record](docs/phase-16-realtime-devices.md), [device-management guide](docs/device-management.md), [Phase 15 record](docs/phase-15-sync-status-ui.md), [sync-status guide](docs/sync-status.md), [Phase 14 record](docs/phase-14-conflict-resolution.md), [conflict guide](docs/conflict-resolution.md), [migration guide](docs/migration-guide.md), [sync protocol](docs/sync-protocol.md), [cloud schema](docs/database-schema.md), [security model](docs/security-model.md), and [audit/refactor record](docs/offline-sync-refactor.md).
+See the [Phase 20 sync repair](docs/phase-20-sync-device-repair.md), [Phase 19 record](docs/phase-19-security-hardening.md), [Phase 18 record](docs/phase-18-performance-free-tier.md), [performance guide](docs/performance-and-free-tier.md), [Phase 17 record](docs/phase-17-backup-recovery.md), [recovery guide](docs/recovery-guide.md), [Phase 16 record](docs/phase-16-realtime-devices.md), [device-management guide](docs/device-management.md), [Phase 15 record](docs/phase-15-sync-status-ui.md), [sync-status guide](docs/sync-status.md), [Phase 14 record](docs/phase-14-conflict-resolution.md), [conflict guide](docs/conflict-resolution.md), [migration guide](docs/migration-guide.md), [sync protocol](docs/sync-protocol.md), [cloud schema](docs/database-schema.md), [security model](docs/security-model.md), and [audit/refactor record](docs/offline-sync-refactor.md).
 
 ## Implemented features
 
@@ -107,6 +109,7 @@ supabase/migrations/202608010003_phase13_financial_sync.sql
 supabase/migrations/202608010004_phase16_realtime_devices.sql
 supabase/migrations/202608030001_phase18_retention_indexes.sql
 supabase/migrations/202608030002_phase19_security_hardening.sql
+supabase/migrations/202608030003_phase20_sync_device_repair.sql
 ```
 
 With a linked Supabase CLI project, review the target and run `supabase db push`. For a disposable local project, use `supabase db reset`, then `supabase test db` for the pgTAP RLS checks. Never test destructive reset commands against production.
@@ -199,7 +202,7 @@ npm run dev
 | `npm run lint` | ESLint | Blocked: ESLint 9 flat config is absent |
 | `npm run preview` | Preview production build | Available |
 
-Automated coverage includes authentication, schema/RLS and sync-RPC contracts, Dexie migrations, durable queue behavior, push failures/idempotency, incremental pagination, dependency ordering, cursor rollback, tombstones, duplicates, and cloud-origin bypass. A live Supabase runtime remains unavailable, so remote migration application and pgTAP remain deployment checks.
+Automated coverage includes authentication, schema/RLS and sync-RPC contracts, Dexie migrations, durable queue behavior, push failures/idempotency, incremental pagination, dependency ordering, cursor rollback, tombstones, duplicates, and cloud-origin bypass. The production Supabase project has been verified for the Phase 20 device/Realtime repair; disposable-database pgTAP checks remain a deployment check.
 
 ## Performance and free-tier operation
 
@@ -240,6 +243,7 @@ docs/                audit, deployment, and phase records
 
 ## Documentation
 
+- [Phase 20 sync device repair](docs/phase-20-sync-device-repair.md)
 - [Phase 18 performance/free-tier record](docs/phase-18-performance-free-tier.md)
 - [Performance and free-tier guidance](docs/performance-and-free-tier.md)
 - [Phase 17 backup and disaster-recovery record](docs/phase-17-backup-recovery.md)

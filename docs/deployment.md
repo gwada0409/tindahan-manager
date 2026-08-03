@@ -66,10 +66,11 @@ supabase/migrations/202608010002_phase12_inventory_sync.sql
 supabase/migrations/202608010003_phase13_financial_sync.sql
 supabase/migrations/202608010004_phase16_realtime_devices.sql
 supabase/migrations/202608030001_phase18_retention_indexes.sql
-202608030002_phase19_security_hardening.sql
+supabase/migrations/202608030002_phase19_security_hardening.sql
+supabase/migrations/202608030003_phase20_sync_device_repair.sql
 ```
 
-Apply every migration in timestamp order. Later migrations add transactional sales, movement-based inventory, financial ledgers, Realtime publication, device sync timestamps, and owner revocation. Realtime and owner device management require the Phase 16 migration. Phase 18 adds receipt-retention cleanup and operational indexes.
+Apply every migration in timestamp order. Later migrations add transactional sales, movement-based inventory, financial ledgers, Realtime publication, device sync timestamps, and owner revocation. Phase 20 safely repairs Phase 16 on existing projects and must be applied even when the earlier file was attempted manually. Phase 18 adds receipt-retention cleanup and operational indexes.
 
 In **Authentication -> URL Configuration**, set the production Site URL and allow redirects for:
 
