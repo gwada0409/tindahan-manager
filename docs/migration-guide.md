@@ -1,7 +1,7 @@
 # Initial account linking and migration guide
 
 Status: account linking implemented with current synchronized entity coverage  
-Date: 2026-08-01
+Date: 2026-08-03
 
 ## Before starting
 
@@ -15,11 +15,11 @@ Use this immediately after account creation when the selected cloud store is emp
 
 ### Merge local data into an existing store
 
-The wizard compares supported local and remote records and displays likely duplicates based on SKU, barcode, phone, or normalized name. IDs are never merged automatically. Supported local rows upload, followed by incremental cloud download.
+The wizard compares supported local and remote records and displays likely duplicates based on SKU, barcode, phone, or normalized name. IDs are never merged automatically. Supported local catalog rows, inventory batches/movements, and completed product sales upload, followed by incremental cloud download.
 
 ### Download cloud data into an empty local database
 
-Use this for a new browser or device. After the backup, the explicit choice clears local working tables and synchronization state, then rebuilds supported master, inventory, and financial records available through incremental cloud pull. Completed sales are not currently part of new-device cloud pull; use a Phase 17 backup file when full local history is required. Store settings and local account profiles are retained.
+Use this for a new browser or device. After the backup, the explicit choice clears local working tables and synchronization state, then rebuilds supported master, inventory, and financial records available through incremental cloud pull. Completed product sales and their line items participate in cloud pull. Use a Phase 17 backup when local-only Notes/Services or other unsupported history is required. Store settings and local account profiles are retained.
 
 ## Migration mechanics
 
@@ -28,7 +28,7 @@ Use this for a new browser or device. After the backup, the explicit choice clea
 3. Non-UUID category, supplier, customer, and product IDs are replaced with UUIDs in one transaction; dependent references are updated.
 4. Missing store, device, actor, and sync metadata are filled while original timestamps are retained when present.
 5. Each table is committed separately and recorded in `migrationState`.
-6. Supported rows are queued for idempotent upload.
+6. Catalog rows and reconstructed inventory/sale transaction envelopes are queued for idempotent upload. Legacy inventory caches receive labeled opening/reconciliation ledger entries only when required.
 7. Bounded synchronization runs continue until that queue is empty.
 8. Counts and totals are recalculated before completion.
 
@@ -44,4 +44,4 @@ Do not downgrade IndexedDB after v7. If migration fails, preserve browser data, 
 
 ## Current scope
 
-Account-linking queue preparation remains limited to categories, suppliers, products, and customers. Normal synchronization additionally covers transactional sales uploads, inventory movements, and implemented financial modules. A downloaded Phase 17 backup is the complete-device restore path because cloud pull does not yet reconstruct completed sales or local-only Notes/Services.
+Account linking uploads categories, suppliers, products, customers, batch-based inventory history, and completed product sales. Normal synchronization also covers implemented financial modules. Local-only Notes/Services and sales containing service lines remain outside cloud reconstruction; use a Phase 17 backup for those records.

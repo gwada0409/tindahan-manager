@@ -2,11 +2,11 @@
 
 Tindahan Manager is a local-first point-of-sale and store-management Progressive Web App for small retail and sari-sari store operations. It uses React, TypeScript, Vite, Dexie/IndexedDB, Zustand, Tailwind CSS, and optional Supabase services.
 
-Phase 20 repairs device activity tracking and Realtime registration for existing Supabase projects without rewriting business records.
+Phase 21 completes account-linking upload and multi-device pull for inventory and completed sales, and adds owner-controlled restoration for revoked device registrations without deleting business data.
 
 Phase 19 hardens the deployed browser and cloud boundary with forced RLS, anonymous-access revocation, bounded new text inputs, a restrictive browser security policy, and audited backup restores.
 
-See the [Phase 20 sync repair](docs/phase-20-sync-device-repair.md), [Phase 19 record](docs/phase-19-security-hardening.md), [Phase 18 record](docs/phase-18-performance-free-tier.md), [performance guide](docs/performance-and-free-tier.md), [Phase 17 record](docs/phase-17-backup-recovery.md), [recovery guide](docs/recovery-guide.md), [Phase 16 record](docs/phase-16-realtime-devices.md), [device-management guide](docs/device-management.md), [Phase 15 record](docs/phase-15-sync-status-ui.md), [sync-status guide](docs/sync-status.md), [Phase 14 record](docs/phase-14-conflict-resolution.md), [conflict guide](docs/conflict-resolution.md), [migration guide](docs/migration-guide.md), [sync protocol](docs/sync-protocol.md), [cloud schema](docs/database-schema.md), [security model](docs/security-model.md), and [audit/refactor record](docs/offline-sync-refactor.md).
+See the [Phase 21 synchronization and restore record](docs/phase-21-inventory-sales-restore.md), [Phase 20 sync repair](docs/phase-20-sync-device-repair.md), [Phase 19 record](docs/phase-19-security-hardening.md), [Phase 18 record](docs/phase-18-performance-free-tier.md), [performance guide](docs/performance-and-free-tier.md), [Phase 17 record](docs/phase-17-backup-recovery.md), [recovery guide](docs/recovery-guide.md), [Phase 16 record](docs/phase-16-realtime-devices.md), [device-management guide](docs/device-management.md), [Phase 15 record](docs/phase-15-sync-status-ui.md), [sync-status guide](docs/sync-status.md), [Phase 14 record](docs/phase-14-conflict-resolution.md), [conflict guide](docs/conflict-resolution.md), [migration guide](docs/migration-guide.md), [sync protocol](docs/sync-protocol.md), [cloud schema](docs/database-schema.md), [security model](docs/security-model.md), and [audit/refactor record](docs/offline-sync-refactor.md).
 
 ## Implemented features
 
@@ -18,13 +18,13 @@ See the [Phase 20 sync repair](docs/phase-20-sync-device-repair.md), [Phase 19 r
 - Installable PWA shell with GitHub Pages-safe hash routing, offline relaunch, and user-controlled updates
 - UUID record IDs, persistent browser identity, sync metadata, soft deletion, and non-destructive IndexedDB migrations through v7
 - Optional Supabase Auth sign-up, email/password sign-in, session restoration, sign-out, email confirmation redirect, and password recovery
-- Durable queueing, push/pull, and explicit resumable account linking for products, categories, customers, and suppliers
-- Atomic, idempotent upload of newly completed sales with complete items, payments, debt effects, stock-movement envelopes, and audit records
+- Durable queueing, push/pull, and explicit resumable account linking for catalog data, inventory batches/movements, and completed product sales
+- Atomic, idempotent upload and incremental pull of completed sales with complete items, payments, debt effects, stock-movement envelopes, and audit records
 - Movement-based multi-device inventory synchronization with duplicate suppression, transactional quantity caches, and reconciliation reporting
 - Idempotent synchronization for Utang, GCash, bills, employees/payroll, and vault
 - Durable mutable-record conflict capture with an administrator-only base/local/cloud review screen and audited keep-local or keep-cloud decisions
 - Global sync-status indicator with pending count, last success, friendly errors, manual retry, conflicts, connectivity, cursor, device, and queue diagnostics
-- Debounced Realtime change notifications with incremental-pull refresh, periodic missed-event recovery, device activity tracking, and owner-only device revocation
+- Debounced Realtime change notifications with incremental-pull refresh, periodic missed-event recovery, device activity tracking, and owner-only device revocation/restoration
 - Versioned SHA-256 backups of every Dexie table with metadata/count validation, transactional full restore, date rehydration, and pre-restore/pre-reset safety copies
 - Adaptive idle synchronization, unchanged-update suppression, indexed queue selection, bounded confirmed-receipt retention, queue/failure warning thresholds, and optional large-backup gzip
 - Forced-RLS cloud ownership and business schemas with anonymous-access revocation, store-scoped relationships, role/device checks, restrictive deletion, bounded text inputs, and operation-ID constraints
@@ -67,8 +67,8 @@ Offline account reopening does not validate a currently active server session an
 ```text
 React UI
   -> auth service -> Supabase Auth + ownership tables/RLS (when configured)
-  -> feature services/repositories -> Dexie/IndexedDB v5
-  -> durable local sync queue (four master-data entity types)
+  -> feature services/repositories -> Dexie/IndexedDB v7
+  -> durable local sync queue (catalog, inventory, sales, and financial operations)
   -> authenticated push/pull engine -> idempotent Supabase RPC/RLS
   -> transactional Dexie apply + per-store server cursor
   -> account-linking backup/progress validation
@@ -110,6 +110,7 @@ supabase/migrations/202608010004_phase16_realtime_devices.sql
 supabase/migrations/202608030001_phase18_retention_indexes.sql
 supabase/migrations/202608030002_phase19_security_hardening.sql
 supabase/migrations/202608030003_phase20_sync_device_repair.sql
+supabase/migrations/202608030004_phase21_inventory_sales_restore.sql
 ```
 
 With a linked Supabase CLI project, review the target and run `supabase db push`. For a disposable local project, use `supabase db reset`, then `supabase test db` for the pgTAP RLS checks. Never test destructive reset commands against production.
@@ -173,7 +174,7 @@ Initial account linking shows its persisted stage and table-step progress. Closi
 
 Online devices subscribe to store-scoped Supabase Realtime database-change notifications for synchronized tables. Notifications are debounced for 750 ms and only trigger the normal authenticated synchronization engine; event payloads never replace IndexedDB records directly. The incremental pull RPC remains authoritative, and the existing 60-second interval recovers notifications missed while sleeping, disconnected, or unsubscribed.
 
-Each verified browser registration records a stable device ID, browser/platform name, registration time, last activity, last successful sync, and revocation time. Store owners can review and revoke devices under **Settings → Store devices**. Revocation blocks future cloud writes through existing device-aware RLS/RPC checks and cannot be undone from the revoked device.
+Each verified browser registration records a stable device ID, browser/platform name, registration time, last activity, last successful sync, and revocation time. Store owners can review, revoke, and restore devices under **Settings -> Store devices**. Revocation blocks future cloud writes through existing device-aware RLS/RPC checks. Only an authenticated store owner can restore the preserved registration; the revoked device cannot restore itself.
 
 Revocation cannot erase local IndexedDB or immediately stop an already-offline browser. That device learns of revocation only when it reconnects; physical/browser-profile access must be handled separately. See [device management](docs/device-management.md).
 ## GitHub Pages deployment
@@ -243,6 +244,7 @@ docs/                audit, deployment, and phase records
 
 ## Documentation
 
+- [Phase 21 inventory/sales synchronization and device restoration](docs/phase-21-inventory-sales-restore.md)
 - [Phase 20 sync device repair](docs/phase-20-sync-device-repair.md)
 - [Phase 18 performance/free-tier record](docs/phase-18-performance-free-tier.md)
 - [Performance and free-tier guidance](docs/performance-and-free-tier.md)

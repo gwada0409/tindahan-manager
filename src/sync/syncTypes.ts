@@ -3,7 +3,7 @@ import type { PullCursor, SyncQueueItem } from '@/domain/sync/sync.types';
 export interface LocalSyncContext { storeId: string; userId: string; deviceId: string; onlineSession: boolean; }
 export interface PushResult { operationId: string; status: 'processed' | 'failed'; duplicate?: boolean; errorCode?: string; error?: string; }
 export interface PushSummary { attempted: number; processed: number; failed: number; skippedReason?: string; }
-export type PullEntityType = 'product_categories' | 'suppliers' | 'products' | 'customers' | 'inventory_batches' | 'stock_movements' | 'utang_entries' | 'gcash_transactions' | 'bills' | 'employees' | 'payroll_entries' | 'vault_transactions';
+export type PullEntityType = 'product_categories' | 'suppliers' | 'products' | 'customers' | 'inventory_batches' | 'stock_movements' | 'sales' | 'sale_items' | 'utang_entries' | 'gcash_transactions' | 'bills' | 'employees' | 'payroll_entries' | 'vault_transactions';
 export interface PullChange { entityType: PullEntityType; changedAt: string; record: Record<string, unknown>; }
 export interface PullPage { changes: PullChange[]; nextCursor: PullCursor; hasMore: boolean; }
 export interface SyncSummary extends PushSummary { pulled: number; }

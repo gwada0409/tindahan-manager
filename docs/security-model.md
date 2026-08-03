@@ -1,6 +1,6 @@
 # Security model
 
-Status: Phase 19 additive hardening implemented; Phase 20 sync repair verified
+Status: Phase 19 hardening, Phase 20 repair, and Phase 21 owner-only device restoration implemented
 Date: 2026-08-03
 
 ## Trust boundaries
@@ -31,6 +31,7 @@ Offline identity permits local application reopening only. It does not authorize
 | Store settings | Yes | Yes | No | No |
 | Manage administrators | Yes | No | No | No |
 | Manage cashier/staff memberships | Yes | Yes | No | No |
+| Revoke/restore store devices | Yes | No | No | No |
 
 This preserves the current UI permission mapping: owner/administrator correspond to local `admin`; cashier/staff correspond to local `employee`.
 
@@ -63,7 +64,7 @@ User deletion may remove that user's Phase 5 membership/device rows, but owned s
 
 A revoked device is rejected by online write policies and cannot clear its own revocation timestamp. An already-offline browser cannot learn of revocation until it reconnects. Local IndexedDB remains accessible to someone who controls the browser profile/device.
 
-Phase 16 exposes device listing only to the store owner and performs revocation through a validated owner-only security-definer RPC. Revocation is permanent for that registration and blocks future cloud writes. Device last activity and successful sync times are operational metadata, not a guarantee of physical-device security.
+Phase 16 exposes device listing only to the store owner and performs revocation through a validated owner-only security-definer RPC. Phase 21 adds a separate owner-only restore RPC. A transaction-local authorization flag lets that RPC clear the revocation timestamp, while the trigger continues to reject direct unrevocation by the device or other clients. Device last activity and successful sync times are operational metadata, not a guarantee of physical-device security.
 
 ## Operation and transaction protections
 
@@ -112,3 +113,7 @@ Existing RPCs enforce authenticated membership/device context and bounded page/b
 ## Security reporting
 
 Do not put credentials, customer records, backup files, or exploitable details in a public issue. Use GitHub private vulnerability reporting when the repository enables it, or request a private owner contact channel without disclosing sensitive evidence publicly.
+
+## Phase 21 restore boundary
+
+Only an active store owner can call restore_store_device. The function preserves the registration row, validates store ownership, and grants execution only to authenticated; public and anonymous execution are revoked. Restoring access does not erase or rewrite business data.

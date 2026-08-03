@@ -1,0 +1,10 @@
+begin;
+select plan(6);
+select has_column('public','sales','server_changed_at','sales have a server-owned pull cursor');
+select has_column('public','sale_items','server_changed_at','sale items have a server-owned pull cursor');
+select has_function('public','restore_store_device',array['uuid','uuid'],'owner device restore RPC exists');
+select function_privs_are('public','restore_store_device',array['uuid','uuid'],'authenticated',array['EXECUTE'],'authenticated may call the validated restore RPC');
+select function_privs_are('public','restore_store_device',array['uuid','uuid'],'anon',array[]::text[],'anonymous clients cannot restore devices');
+select isnt_empty($$select 1 from pg_proc where proname='prevent_device_unrevocation' and pg_get_functiondef(oid) like '%app.device_restore_authorized%'$$,'direct unrevocation remains trigger-guarded');
+select * from finish();
+rollback;

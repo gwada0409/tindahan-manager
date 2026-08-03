@@ -16,7 +16,7 @@ function parseResults(value: Json): PushResult[] {
 }
 
 
-const pullEntityTypes = new Set<PullEntityType>(['product_categories','suppliers','products','customers','inventory_batches','stock_movements','utang_entries','gcash_transactions','bills','employees','payroll_entries','vault_transactions']);
+const pullEntityTypes = new Set<PullEntityType>(['product_categories','suppliers','products','customers','inventory_batches','stock_movements','sales','sale_items','utang_entries','gcash_transactions','bills','employees','payroll_entries','vault_transactions']);
 function parsePullPage(value: Json): PullPage {
   if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error('Pull endpoint returned an invalid response.');
   const cursor=value.nextCursor;

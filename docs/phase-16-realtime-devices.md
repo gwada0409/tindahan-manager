@@ -26,3 +26,7 @@ No Dexie schema changed. The additive Supabase migration adds one nullable devic
 - ESLint: unavailable because the repository has no ESLint 9 flat configuration.
 - Diff whitespace and credential-value review: passed.
 - Live Realtime delivery, migration application, and pgTAP require a configured Supabase environment and remain deployment checks.
+
+## Phase 21 update
+
+Phase 16 originally made revocation irreversible. Phase 21 supersedes that limitation with a separate owner-only Restore action and RPC; direct unrevocation remains blocked.

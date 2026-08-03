@@ -323,6 +323,10 @@ export interface Database {
         Args: { p_store_id: string; p_device_id: string } & Record<string, unknown>;
         Returns: string;
       };
+      restore_store_device: {
+        Args: { p_store_id: string; p_device_id: string } & Record<string, unknown>;
+        Returns: string;
+      };
       process_sync_operations: {
         Args: { p_operations: Json } & Record<string, unknown>;
         Returns: Json;

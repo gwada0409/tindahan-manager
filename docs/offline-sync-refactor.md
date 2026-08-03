@@ -397,14 +397,19 @@ Testing should add migration fixtures, repository/transaction rollback, SQL RLS/
 7. Do not import/reset a browser profile containing valuable data during baseline testing.
 
 
-## Phase 11 completion update — 2026-08-01
+## Phase 11 completion update ï¿½ 2026-08-01
 
-New checkouts now commit the complete local sale and durable sale_transaction queue entry atomically. The server contract is idempotent by operation UUID and rejects incomplete or unreconciled sales. Dexie v7 adds immutable local sale adjustments; void/refund/reversal/adjustment services use compensating records instead of overwriting completed sales. Cloud stock-ledger ingestion and sales pull remain deferred to later phases.
+New checkouts now commit the complete local sale and durable sale_transaction queue entry atomically. The server contract is idempotent by operation UUID and rejects incomplete or unreconciled sales. Dexie v7 adds immutable local sale adjustments; void/refund/reversal/adjustment services use compensating records instead of overwriting completed sales. Cloud stock-ledger ingestion was delivered in Phase 12; completed sale and sale-item pull is delivered in Phase 21.
 
-## Phase 12 completion update — 2026-08-01
+## Phase 12 completion update ï¿½ 2026-08-01
 
 Inventory synchronization now uses immutable signed stock movements. Restock and movement operations are queued atomically, cloud retries are idempotent, pulled movement UUIDs merge without overwriting final quantities, and cached batch stock is updated by delta. Local and server reconciliation reports surface incomplete history and concurrent negative stock without deleting sales or movements.
 
-## Phase 13 completion update — 2026-08-01
+## Phase 13 completion update ï¿½ 2026-08-01
 
 Existing Utang, GCash, bills, employee/payroll, and vault modules now create durable sync operations and participate in incremental pull. Immutable financial entries merge by UUID; bills and employees use versions. Expenses and supplier payments remain unsupported because no corresponding local modules exist.
+
+
+## Phase 21 completion update - 2026-08-03
+
+Account linking now queues existing batch inventory and completed product sales after master data, including labeled ledger reconciliation entries when legacy cached stock lacks complete movement history. Incremental pull now includes immutable sale headers followed by sale items. Device revocation remains enforced, while a separate authenticated owner-only RPC can restore the preserved registration.

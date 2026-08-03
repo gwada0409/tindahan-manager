@@ -48,4 +48,60 @@ describe('incremental pull application',()=>{
     expect(await new PullSyncService(local,adapter,1).pullAll('store-1')).toBe(2);
     expect(pull.mock.calls[1]?.[1]).toEqual(c1);expect((await database?.syncState.get('pull:store-1'))?.lastSuccessfulSyncAt).toBe(c2.changedAt);
   });
+
+  it('pulls immutable sale headers before their line items and ignores duplicate pages', async () => {
+    const local = await setup();
+    const metadata = {
+      store_id: 'store-1',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+      version: 1,
+      updated_by: 'user-2',
+      device_id: 'device-2',
+    };
+    const sale: PullChange = {
+      entityType: 'sales',
+      changedAt: '2026-01-01T00:00:03Z',
+      record: {
+        ...metadata,
+        id: 'sale-1',
+        occurred_at: '2026-01-01T00:00:00Z',
+        subtotal: 150,
+        discount: 0,
+        total: 150,
+        payment_method: 'cash',
+        amount_received: 200,
+        change_amount: 50,
+        reference_number: null,
+        customer_id: null,
+        status: 'completed',
+        void_reason: null,
+        operation_id: 'op-1',
+      },
+    };
+    const item: PullChange = {
+      entityType: 'sale_items',
+      changedAt: '2026-01-01T00:00:04Z',
+      record: {
+        ...metadata,
+        id: 'item-1',
+        sale_id: 'sale-1',
+        item_id: 'product-1',
+        item_type: 'product',
+        name: 'Cola',
+        quantity: 1,
+        unit_price: 150,
+        discount: 0,
+        total: 150,
+        batch_id: null,
+      },
+    };
+    const next = cursor('2026-01-01T00:00:04Z', 'item-1');
+
+    await local.applyPage('store-1', [item, sale], next);
+    await local.applyPage('store-1', [sale, item], next);
+
+    expect(await database?.sales.get('sale-1')).toMatchObject({ total: 150, paymentMethod: 'cash' });
+    expect(await database?.saleItems.where('saleId').equals('sale-1').count()).toBe(1);
+  });
 });

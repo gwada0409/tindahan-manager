@@ -1,10 +1,10 @@
 # GitHub Pages deployment and public Supabase configuration
 
-Status: Phase 6 cloud schema and RLS completed in source control; hosted deployment and remote migration still require repository/project configuration  
+Status: Phase 21 synchronization and device restoration implemented; production requires all ordered migrations and the matching frontend deployment
 Date: 2026-07-31  
 Expected URL: `https://gwada0409.github.io/tindahan-manager/`
 
-This document describes the implemented build/deployment, Auth configuration, and ordered Phase 5/6 migrations. The migrations provide RLS-protected ownership and business tables. Business synchronization is not implemented.
+This document describes the implemented build/deployment, Auth configuration, and ordered cloud migrations. The application synchronizes the documented catalog, inventory, completed product sales, and financial records through RLS-protected RPCs.
 
 ## Local public configuration
 
@@ -68,9 +68,10 @@ supabase/migrations/202608010004_phase16_realtime_devices.sql
 supabase/migrations/202608030001_phase18_retention_indexes.sql
 supabase/migrations/202608030002_phase19_security_hardening.sql
 supabase/migrations/202608030003_phase20_sync_device_repair.sql
+supabase/migrations/202608030004_phase21_inventory_sales_restore.sql
 ```
 
-Apply every migration in timestamp order. Later migrations add transactional sales, movement-based inventory, financial ledgers, Realtime publication, device sync timestamps, and owner revocation. Phase 20 safely repairs Phase 16 on existing projects and must be applied even when the earlier file was attempted manually. Phase 18 adds receipt-retention cleanup and operational indexes.
+Apply every migration in timestamp order. Later migrations add transactional sales, movement-based inventory, financial ledgers, Realtime publication, device sync timestamps, and owner revocation. Phase 20 safely repairs Phase 16 on existing projects and must be applied even when the earlier file was attempted manually. Phase 18 adds receipt-retention cleanup and operational indexes. Phase 21 adds sales pull cursors, legacy inventory/sales account-linking upload, and owner-only device restoration.
 
 In **Authentication -> URL Configuration**, set the production Site URL and allow redirects for:
 

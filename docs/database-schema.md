@@ -31,7 +31,7 @@ The first migration creates account ownership. The second adds business tables, 
 |---|---|---|
 | `stores` | `storeSettings` | Manager-updatable; owner identity is trigger-protected |
 | `store_members` | Cloud membership only | Owner hierarchy protected |
-| `devices` | Persistent browser identity | Registration, name, activity/sync timestamps, and permanent owner-controlled revocation |
+| `devices` | Persistent browser identity | Registration, name, activity/sync timestamps, and owner-controlled revocation/restoration |
 | `product_categories` | `categories` | Mutable, manager-controlled soft deletion |
 | `suppliers` | `suppliers` | Mutable prerequisite for product/batch relationships |
 | `products` | `products` | Mutable, manager-controlled soft deletion |
@@ -118,7 +118,6 @@ Vitest structurally verifies table coverage, metadata, RLS enablement, restricti
 
 A local Supabase CLI/PostgreSQL runtime was not available during Phase 6, so SQL execution remains a required deployment check.
 
-
 ## Phase 8 push RPC
 
 `202607310003_phase8_push_sync_rpc.sql` adds `process_sync_operations(jsonb)`. It processes batches of at most 50 supported master-data operations, validates identity and version boundaries, and records a unique receipt in `sync_operations`. Per-operation exception blocks permit partial batch results without acknowledging failed mutations.
@@ -144,11 +143,15 @@ Server-owned pull timestamps now cover Utang, GCash, bills, employees, payroll, 
 
 ## Phase 16 additions
 
-`devices.last_sync_at` records the latest successful client-reported synchronization. Owners can select every device for their store and revoke an active registration through `revoke_store_device`; the RPC validates the owner role and cannot un-revoke a row. Synchronized tables are members of `supabase_realtime`, but their events are invalidation hints only. Authoritative data still comes from RLS-protected incremental pull.
-`devices.last_sync_at` records the latest successful client-reported synchronization. Owners can select every device for their store and revoke an active registration through `revoke_store_device`; the RPC validates the owner role and cannot un-revoke a row. Synchronized tables are members of `supabase_realtime`, but their events are invalidation hints only. Authoritative data still comes from RLS-protected incremental pull.
+Devices record last activity and successful sync timestamps. Owners can list store registrations and revoke active devices. Realtime publication events remain invalidation hints; the authenticated incremental pull is authoritative.
+
 ## Phase 18 operational indexes and retention
 
 Indexes support store/processed-time receipt cleanup, store device-activity ordering, and open inventory-reconciliation review. `cleanup_sync_receipts` validates active membership and bounded retention/limit arguments, then deletes at most the requested batch of confirmed receipts. It does not touch failed local queue entries or business rows.
 ## Phase 19 security enforcement
 
 The additive Phase 19 migration forces RLS on every implemented ownership and business table, revokes anonymous table access, removes public/anonymous RPC execution, and bounds newly written names and audit payloads without rewriting existing rows. Authenticated capabilities continue to depend on the grants and store/role/device checks defined by earlier migrations.
+
+## Phase 21 sales pull and device restoration
+
+Sales and sale items have server-owned cursor timestamps, triggers, and store/cursor/UUID indexes. The pull RPC orders sale headers before dependent items. Owners can revoke an active registration through revoke_store_device and restore it through restore_store_device. Both RPCs validate the owner role, while the row trigger blocks direct unrevocation. No device row or business row is deleted.
