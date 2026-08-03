@@ -5,7 +5,7 @@ Status: implemented and verified locally on 2026-08-03
 ## Delivered
 
 - Existing account-linking runs now queue inventory batches, immutable stock movements, completed sale headers, sale items, and matching payment records after catalog data.
-- Previously completed account-linking states without the Phase 21 transaction marker reopen once, retain their original backup and mode, and resume without duplicating already processed master rows.
+- Previously completed account-linking states without the Phase 21 baseline marker reopen once, create a fresh local recovery point, retain their original mode, and resume without duplicating already processed master rows. This fresh baseline includes records created after the original account link.
 - Legacy batches without a complete ledger receive explicit opening/reconciliation movements so the cloud ledger preserves the current cached quantity. These additive records are labeled and included in validation.
 - Completed sale headers and sale items now have server-owned cursor timestamps and participate in dependency-ordered incremental pull.
 - Duplicate sale and sale-item pull pages are ignored by UUID and never requeue data.
@@ -17,7 +17,7 @@ Status: implemented and verified locally on 2026-08-03
 
 No Dexie schema changes are required. The Supabase migration adds two cursor columns, their triggers/indexes, one owner-only RPC, and a guarded trigger update. It does not delete or overwrite inventory, sales, device registrations, or local backups.
 
-Account-linking still creates a complete local backup first. It rejects orphan inventory movements, incomplete sales, service sale lines, and missing required Utang/GCash effects instead of silently omitting them.
+Account-linking still creates a complete local backup first. Count validation remains exact for business tables; append-only authentication/device audit events may increase during the run but audit history must never shrink. The migration rejects orphan inventory movements, incomplete sales, service sale lines, and missing required Utang/GCash effects instead of silently omitting them.
 
 ## Deployment
 
@@ -26,7 +26,7 @@ Apply supabase/migrations/202608030004_phase21_inventory_sales_restore.sql after
 ## Verification
 
 - TypeScript project build passes.
-- Vitest passes: 37 files and 132 tests.
+- Vitest passes: 37 files and 133 tests.
 - Production/PWA build passes: 2,867 modules and 10 precache entries.
 - The live Supabase migration completed successfully. Read-only verification returned true for both cursor columns, the restore RPC, and both sales pull branches.
 - ESLint remains unavailable because the repository has no ESLint 9 flat configuration.

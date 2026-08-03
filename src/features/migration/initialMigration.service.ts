@@ -27,6 +27,7 @@ const supported: Record<string, string> = {
 };
 const transactionTables = new Set(['inventoryBatches', 'stockMovements', 'sales', 'saleItems', 'utangEntries', 'gcashTransactions']);
 const TRANSACTION_STEP = '__inventory_sales_v2__';
+const BASELINE_STEP = '__inventory_sales_baseline_v3__';
 const OPENING_NOTE = 'Initial cloud migration opening balance';
 const RECONCILIATION_NOTE = 'Initial cloud migration ledger reconciliation';
 const totalFields: Record<string, string[]> = {
@@ -55,7 +56,10 @@ function originalTime(row: Row, keys: string[]): string | undefined {
 }
 
 function completed(state: InitialMigrationState | undefined): boolean {
-  return state?.status === 'complete' && (state.mode === 'download-cloud' || state.processedTables.includes(TRANSACTION_STEP));
+  return state?.status === 'complete' && (
+    state.mode === 'download-cloud' ||
+    (state.processedTables.includes(BASELINE_STEP) && state.processedTables.includes(TRANSACTION_STEP))
+  );
 }
 
 function movementTime(movement: StockMovement): number {
@@ -509,12 +513,30 @@ export class InitialMigrationService {
         backupId: backup.id,
         startedAt: nowUtcIso(),
         updatedAt: nowUtcIso(),
-        processedTables: [],
+        processedTables: mode === 'download-cloud' ? [] : [BASELINE_STEP],
         countsBefore: analysis.counts,
         totalsBefore: analysis.totals,
         duplicateCount: analysis.duplicates.length,
       };
       await this.database.migrationState.add(state);
+    }
+
+    // Phase 21 extends a previously completed account-linking migration. Take a
+    // fresh recovery point and validation baseline before processing historical
+    // inventory and sales that may have been created after the original run.
+    if (mode !== 'download-cloud' && !state.processedTables.includes(BASELINE_STEP)) {
+      const backup = await this.backup(source);
+      state = {
+        ...state,
+        status: 'backed-up',
+        backupId: backup.id,
+        countsBefore: analysis.counts,
+        totalsBefore: analysis.totals,
+        processedTables: [...state.processedTables, BASELINE_STEP],
+        updatedAt: nowUtcIso(),
+        lastError: undefined,
+      };
+      await this.database.migrationState.put(state);
     }
 
     try {
@@ -626,7 +648,12 @@ export class InitialMigrationService {
         ).length;
         for (const [name, count] of Object.entries(state.countsBefore)) {
           const expected = name === 'stockMovements' ? count + generatedMovements : count;
-          if ((after.counts[name] ?? 0) !== expected) throw new Error(`Count validation failed for ${name}.`);
+          const actual = after.counts[name] ?? 0;
+          // Audit history is append-only and authentication/device events can be
+          // recorded while migration is in progress. Never allow it to shrink.
+          if (name === 'auditLogs' ? actual < expected : actual !== expected) {
+            throw new Error(`Count validation failed for ${name}.`);
+          }
         }
         for (const [name, total] of Object.entries(state.totalsBefore)) {
           if ((after.totals[name] ?? 0) !== total) throw new Error(`Total validation failed for ${name}.`);

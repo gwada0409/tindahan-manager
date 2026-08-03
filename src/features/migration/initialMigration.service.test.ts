@@ -97,4 +97,30 @@ describe('initial account linking',()=>{let database:TindahanDB|undefined;afterE
       ]),
     );
   });
+
+  it('refreshes the backup and validation baseline for a legacy completed migration', async () => {
+    const service = await setup();
+    await database?.migrationState.put({
+      id: 'initial:cloud-store',
+      mode: 'create-cloud-store',
+      status: 'complete',
+      targetStoreId: 'cloud-store',
+      backupId: 'legacy-backup',
+      startedAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      processedTables: ['categories', 'products'],
+      countsBefore: { categories: 0, products: 0, auditLogs: 0 },
+      totalsBefore: {},
+      duplicateCount: 0,
+    });
+    await database?.auditLogs.add({ id: crypto.randomUUID(), date: new Date('2026-01-02T00:00:00Z'), action: 'auth:sign-in', entityType: 'user', entityId: 'user-1', details: '{}' });
+
+    const run = vi.fn(async () => { await database?.syncQueue.clear(); return success; });
+    const state = await service.migrate('create-cloud-store', 'cloud-store', 'user-1', 'device-1', run);
+
+    expect(state.status).toBe('complete');
+    expect(state.processedTables).toContain('__inventory_sales_baseline_v3__');
+    expect(state.countsBefore.auditLogs).toBe(1);
+    expect(await database?.migrationBackups.count()).toBe(1);
+  });
 });
