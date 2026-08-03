@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/Table';
 import { Button } from '@/components/ui/Button';
@@ -8,7 +7,6 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Plus } from 'lucide-react';
 import { format } from 'date-fns';
-import { v4 as uuidv4 } from 'uuid';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 

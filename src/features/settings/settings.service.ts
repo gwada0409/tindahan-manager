@@ -1,37 +1,31 @@
-import { db } from '@/db/database';
-import { Store } from '@/types';
+import { db, type TindahanDB } from '@/db/database';
+import { storeRepo } from '@/repositories/EntityRepositories';
+import { getOrCreateDeviceId } from '@/services/device/deviceIdentityService';
+import { generateId } from '@/shared/utils/id';
+import type { Store } from '@/types';
+import type { MigrationBackup } from '@/domain/sync/sync.types';
 
+const BACKUP_KIND='tindahan-backup';
+const SCHEMA_VERSION=7;
+type BackupData=Record<string,unknown[]>;
+export interface BackupFile {kind:typeof BACKUP_KIND;schemaVersion:number;applicationVersion:string;storeId:string|null;deviceId:string;exportedAt:string;recordCounts:Record<string,number>;checksum:string;data:BackupData;}
+export interface BackupPreview {schemaVersion:number;applicationVersion:string;storeId:string|null;deviceId:string;exportedAt:string;recordCounts:Record<string,number>;totalRecords:number;}
+const dateFields:Record<string,string[]>={customers:['createdAt'],inventoryBatches:['expirationDate','restockDate'],stockMovements:['date'],utangEntries:['date'],sales:['date'],gcashTransactions:['date'],bills:['dueDate','paidDate'],employees:['startDate'],payrollEntries:['payPeriodStart','payPeriodEnd','paidDate'],vaultTransactions:['date'],notes:['reminderDate','createdAt','updatedAt'],auditLogs:['date'],saleAdjustments:['date']};
+const isObject=(value:unknown):value is Record<string,unknown>=>typeof value==='object'&&value!==null&&!Array.isArray(value);
+function payload(file:Omit<BackupFile,'checksum'>|BackupFile){return{kind:file.kind,schemaVersion:file.schemaVersion,applicationVersion:file.applicationVersion,storeId:file.storeId,deviceId:file.deviceId,exportedAt:file.exportedAt,recordCounts:file.recordCounts,data:file.data};}
+async function sha256(value:unknown):Promise<string>{const bytes=new TextEncoder().encode(JSON.stringify(value));const digest=await crypto.subtle.digest('SHA-256',bytes);return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');}
+function rehydrate(tableName:string,row:Record<string,unknown>):Record<string,unknown>{const copy={...row};for(const field of dateFields[tableName]??[]){const value=copy[field];if(typeof value==='string'){const parsed=new Date(value);if(Number.isNaN(parsed.getTime()))throw new Error(`Invalid ${tableName}.${field} date.`);copy[field]=parsed;}}return copy;}
 export class SettingsService {
-  async getStoreInfo(): Promise<Store | undefined> {
-    return await db.storeSettings.toCollection().first();
-  }
-
-  async updateStoreInfo(id: string, data: Partial<Store>): Promise<void> {
-    await db.storeSettings.update(id, data as any);
-  }
-
-  async exportData(): Promise<Record<string, any[]>> {
-    const data: Record<string, any[]> = {};
-    const tableNames = db.tables.map(t => t.name);
-    for (const name of tableNames) {
-      data[name] = await (db as any)[name].toArray();
-    }
-    return data;
-  }
-
-  async importData(data: Record<string, any[]>): Promise<void> {
-    await db.transaction('rw', db.tables, async () => {
-      for (const [tableName, rows] of Object.entries(data)) {
-        if ((db as any)[tableName] && Array.isArray(rows)) {
-          await (db as any)[tableName].bulkPut(rows);
-        }
-      }
-    });
-  }
-
-  async resetDatabase(): Promise<void> {
-    await db.delete();
-  }
+ private readonly database:TindahanDB;
+ constructor(database:TindahanDB=db){this.database=database;}
+ async getStoreInfo():Promise<Store|undefined>{return this.database===db?storeRepo.list().then(stores=>stores[0]):this.database.storeSettings.toCollection().first();}
+ async updateStoreInfo(id:string,data:Partial<Omit<Store,'id'|'sync'>>):Promise<void>{await storeRepo.update(id,data);}
+ private async snapshot():Promise<BackupData>{const data:BackupData={};for(const table of this.database.tables)data[table.name]=await table.toArray();return data;}
+ async exportData():Promise<BackupFile>{const data=await this.snapshot();const store=await this.database.storeSettings.toCollection().first();const base:Omit<BackupFile,'checksum'>={kind:BACKUP_KIND,schemaVersion:SCHEMA_VERSION,applicationVersion:import.meta.env.VITE_APP_VERSION??'0.0.0',storeId:store?.id??null,deviceId:getOrCreateDeviceId(),exportedAt:new Date().toISOString(),recordCounts:Object.fromEntries(Object.entries(data).map(([name,rows])=>[name,rows.length])),data};return{...base,checksum:await sha256(payload(base))};}
+ async validateBackup(value:unknown):Promise<BackupPreview>{if(!isObject(value)||value.kind!==BACKUP_KIND)throw new Error('This is not a Tindahan backup file.');if(value.schemaVersion!==SCHEMA_VERSION)throw new Error(`Unsupported backup schema version: ${String(value.schemaVersion)}.`);if(typeof value.applicationVersion!=='string'||typeof value.deviceId!=='string'||typeof value.exportedAt!=='string'||typeof value.checksum!=='string'||(value.storeId!==null&&typeof value.storeId!=='string')||!isObject(value.recordCounts)||!isObject(value.data))throw new Error('Backup metadata is incomplete.');if(Number.isNaN(new Date(value.exportedAt).getTime()))throw new Error('Backup export time is invalid.');const known=new Set(this.database.tables.map(table=>table.name));const data=value.data as BackupData;const counts=value.recordCounts as Record<string,number>;for(const name of Object.keys(data))if(!known.has(name))throw new Error(`Unknown backup table: ${name}.`);for(const table of this.database.tables){const rows=data[table.name];if(!Array.isArray(rows))throw new Error(`Backup table is missing: ${table.name}.`);if(counts[table.name]!==rows.length)throw new Error(`Record count mismatch for ${table.name}.`);const keyPath=table.schema.primKey.keyPath;for(const row of rows){if(!isObject(row))throw new Error(`Invalid row in ${table.name}.`);if(typeof keyPath==='string'&&!table.schema.primKey.auto&&!(keyPath in row))throw new Error(`Missing primary key in ${table.name}.`);rehydrate(table.name,row);}}
+ const expected=await sha256(payload(value as unknown as BackupFile));if(expected!==value.checksum)throw new Error('Backup checksum does not match. The file may be damaged or modified.');return{schemaVersion:value.schemaVersion as number,applicationVersion:value.applicationVersion,storeId:value.storeId as string|null,deviceId:value.deviceId,exportedAt:value.exportedAt,recordCounts:counts,totalRecords:Object.values(counts).reduce((sum,count)=>sum+(typeof count==='number'?count:0),0)};}
+ private async recoveryPoint():Promise<MigrationBackup>{const data=await this.snapshot();const counts=Object.fromEntries(Object.entries(data).map(([name,rows])=>[name,rows.length]));return{id:generateId(),createdAt:new Date().toISOString(),sourceStoreId:(await this.database.storeSettings.toCollection().first())?.id,data,counts,totals:{}};}
+ async importData(value:unknown):Promise<void>{const preview=await this.validateBackup(value);const file=value as BackupFile;const recovery=await this.recoveryPoint();const tables=this.database.tables;await this.database.transaction('rw',tables,async()=>{for(const table of tables)await table.clear();for(const table of tables){const rows=file.data[table.name].map(row=>rehydrate(table.name,row as Record<string,unknown>));if(rows.length)await table.bulkPut(rows);}await this.database.migrationBackups.put(recovery);await this.database.auditLogs.add({id:generateId(),date:new Date(),action:'backup:restore',entityType:'backup',entityId:recovery.id,details:JSON.stringify({schemaVersion:preview.schemaVersion,applicationVersion:preview.applicationVersion,exportedAt:preview.exportedAt,totalRecords:preview.totalRecords})});});}
+ async resetDatabase():Promise<void>{await this.database.delete();}
 }
-
-export const settingsService = new SettingsService();
+export const settingsService=new SettingsService();

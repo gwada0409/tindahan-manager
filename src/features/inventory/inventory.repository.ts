@@ -1,63 +1,35 @@
 import { db } from '@/db/database';
-import { InventoryBatch, Product } from '@/types';
+import { createSyncMetadata, isSoftDeleted, touchSyncMetadata, UNASSIGNED_LOCAL_STORE_ID } from '@/domain/sync/syncMetadata';
+import type { InventoryBatch, Product, StockMovement, AuditLog } from '@/types';
+import type { SyncQueueItem } from '@/domain/sync/sync.types';
+import { generateId } from '@/shared/utils/id';
+import { getDefaultRepositoryContext } from '@/repositories/repositoryContext';
+import { notifyLocalSyncMutation } from '@/sync/syncEvents';
+
+interface RestockInput { product:Product; quantityReceived:number; unitCost:number; expirationDate?:Date; referenceNumber?:string; notes?:string; }
 
 export class InventoryRepository {
-  /**
-   * Calculates total available stock for a product from active batches.
-   */
-  async getAvailableStock(productId: string): Promise<number> {
-    const batches = await db.inventoryBatches
-      .where('productId')
-      .equals(productId)
-      .toArray();
-      
-    return batches.reduce((sum, b) => sum + (b.remainingQuantity > 0 ? b.remainingQuantity : 0), 0);
+  async listProducts():Promise<Product[]>{return(await db.products.toArray()).filter((row)=>!isSoftDeleted(row));}
+  async listBatches():Promise<InventoryBatch[]>{return(await db.inventoryBatches.toArray()).filter((row)=>!isSoftDeleted(row));}
+  async getAvailableStock(productId:string):Promise<number>{return(await this.getActiveBatches(productId)).reduce((sum,batch)=>sum+batch.remainingQuantity,0);}
+  async getActiveBatches(productId:string):Promise<InventoryBatch[]>{
+    return(await db.inventoryBatches.where('productId').equals(productId).toArray()).filter((batch)=>!isSoftDeleted(batch)&&batch.remainingQuantity>0).sort((a,b)=>{
+      if(a.expirationDate&&b.expirationDate)return new Date(a.expirationDate).getTime()-new Date(b.expirationDate).getTime();
+      if(a.expirationDate)return-1;if(b.expirationDate)return 1;return new Date(a.restockDate).getTime()-new Date(b.restockDate).getTime();
+    });
   }
-
-  /**
-   * Gets active batches for a product, sorted by expiration date (FEFO) or restock date (FIFO).
-   */
-  async getActiveBatches(productId: string): Promise<InventoryBatch[]> {
-    const batches = await db.inventoryBatches
-      .where('productId')
-      .equals(productId)
-      .toArray();
-
-    return batches
-      .filter(b => b.remainingQuantity > 0)
-      .sort((a, b) => {
-        // FEFO: if both have expiration dates, sort by earliest expiration
-        if (a.expirationDate && b.expirationDate) {
-          return new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime();
-        }
-        // If one has expiration date, prioritize it over the one without
-        if (a.expirationDate) return -1;
-        if (b.expirationDate) return 1;
-        
-        // FIFO: fallback to earliest restock date
-        return new Date(a.restockDate).getTime() - new Date(b.restockDate).getTime();
-      });
-  }
-
-  /**
-   * Update batches directly. Used within a Dexie transaction.
-   */
-  async updateBatches(batches: InventoryBatch[]): Promise<void> {
-    await db.inventoryBatches.bulkPut(batches);
-  }
-
-  /**
-   * Searches products by name, sku, or barcode efficiently.
-   */
-  async searchProducts(term: string, limit = 50): Promise<Product[]> {
-    if (!term) return await db.products.limit(limit).toArray();
-    const lowerTerm = term.toLowerCase();
-    return await db.products.filter(p => 
-      p.name.toLowerCase().includes(lowerTerm) || 
-      p.sku.toLowerCase().includes(lowerTerm) ||
-      p.barcode.includes(term)
-    ).limit(limit).toArray();
+  async updateBatches(batches:InventoryBatch[]):Promise<void>{const context=await getDefaultRepositoryContext();await db.inventoryBatches.bulkPut(batches.map((batch)=>({...batch,sync:batch.sync?touchSyncMetadata(batch.sync,context):createSyncMetadata(context)})));}
+  async searchProducts(term:string,limit=50):Promise<Product[]>{const lower=term.trim().toLowerCase();const products=await this.listProducts();if(!lower)return products.slice(0,limit);return products.filter((p)=>p.name.toLowerCase().includes(lower)||p.sku.toLowerCase().includes(lower)||p.barcode.includes(term)).slice(0,limit);}
+  async restockProduct(input:RestockInput):Promise<string>{
+    const context=await getDefaultRepositoryContext();const now=new Date();const batchId=generateId();const reference=input.referenceNumber||'RESTOCK-'+Date.now().toString().slice(-6);
+    await db.transaction('rw',[db.inventoryBatches,db.stockMovements,db.auditLogs,db.syncQueue],async()=>{
+      const batch:InventoryBatch={id:batchId,productId:input.product.id,quantityReceived:input.quantityReceived,remainingQuantity:input.quantityReceived,unitCost:input.unitCost,restockDate:now,expirationDate:input.expirationDate,supplierId:input.product.supplierId,referenceNumber:reference,notes:input.notes??'',sync:createSyncMetadata(context)};
+      const movement:StockMovement={id:generateId(),productId:input.product.id,batchId,type:'restock',quantity:input.quantityReceived,date:now,referenceId:batchId,notes:'Restocked '+input.quantityReceived+' '+(input.product.unit||'units')+'. Ref: '+(input.referenceNumber||'N/A'),sync:createSyncMetadata(context)};
+      const audit:AuditLog={id:generateId(),date:now,action:'inventory:restock',entityType:'product',entityId:input.product.id,details:JSON.stringify({productName:input.product.name,qty:input.quantityReceived,unitCost:input.unitCost}),sync:createSyncMetadata(context)};
+      await db.inventoryBatches.add(batch);await db.stockMovements.add(movement);await db.auditLogs.add(audit);
+      if(context.storeId!==UNASSIGNED_LOCAL_STORE_ID){const operation:SyncQueueItem={operationId:generateId(),storeId:context.storeId,entityType:'inventory_restock',entityId:batchId,operation:'transaction',payload:{batch,movement,audit},createdAt:now.toISOString(),attempts:0,status:'pending'};await db.syncQueue.add(operation);}
+    });
+    notifyLocalSyncMutation();return batchId;
   }
 }
-
-export const inventoryRepo = new InventoryRepository();
+export const inventoryRepo=new InventoryRepository();

@@ -1,0 +1,5 @@
+import { useEffect,useState,type ReactNode } from 'react';
+import { Navigate } from 'react-router-dom';
+import { useAuthStore } from '@/features/auth/auth.store';
+import { initialMigrationService } from './migrationRuntime';
+export function RequireInitialMigration({children}:{children:ReactNode}){const user=useAuthStore((s)=>s.user);const sessionMode=useAuthStore((s)=>s.sessionMode);const[checking,setChecking]=useState(true);const[required,setRequired]=useState(false);useEffect(()=>{let active=true;if(!user||sessionMode!=='online'){setChecking(false);setRequired(false);return;}setChecking(true);void initialMigrationService.needsMigration(user.storeId).then((value)=>{if(active)setRequired(value);}).finally(()=>{if(active)setChecking(false);});return()=>{active=false;};},[user,sessionMode]);if(checking)return<div className="h-screen grid place-items-center text-sm text-muted-foreground">Checking local data linkage…</div>;if(required)return<Navigate to="/migration" replace/>;return<>{children}</>;}

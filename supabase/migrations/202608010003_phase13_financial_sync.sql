@@ -1,0 +1,54 @@
+-- Phase 13: idempotent financial ledgers and mutable bill/employee masters.
+alter table public.utang_entries add column server_changed_at timestamptz not null default clock_timestamp();
+alter table public.gcash_transactions add column server_changed_at timestamptz not null default clock_timestamp();
+alter table public.bills add column server_changed_at timestamptz not null default clock_timestamp();
+alter table public.employees add column server_changed_at timestamptz not null default clock_timestamp();
+alter table public.payroll_entries add column server_changed_at timestamptz not null default clock_timestamp();
+alter table public.vault_transactions add column server_changed_at timestamptz not null default clock_timestamp();
+do $$ declare n text;begin foreach n in array array['utang_entries','gcash_transactions','bills','employees','payroll_entries','vault_transactions'] loop execute format('create trigger %I before insert or update on public.%I for each row execute function private.set_server_changed_at()',n||'_server_changed',n);execute format('create index %I on public.%I(store_id,server_changed_at,id)',n||'_pull_idx',n);end loop;end$$;
+
+create or replace function public.process_financial_operation(p_operation jsonb)
+returns jsonb language plpgsql security definer set search_path=public,private,pg_temp as $$
+declare op_id uuid:=(p_operation->>'operationId')::uuid;s uuid:=(p_operation->>'storeId')::uuid;k text:=p_operation->>'entityType';p jsonb:=p_operation->'payload';a uuid:=auth.uid();d text:=p#>>'{sync,deviceId}';eid uuid:=(p_operation->>'entityId')::uuid;
+begin
+ if a is null then raise exception 'Authentication is required' using errcode='42501';end if;
+ if k not in('utang_entries','gcash_transactions','bills','employees','payroll_entries','vault_transactions') or p->>'id'<>eid::text then raise exception 'Invalid financial operation' using errcode='22023';end if;
+ if exists(select 1 from public.sync_operations where operation_id=op_id)then return jsonb_build_object('operationId',op_id,'status','processed','duplicate',true);end if;
+ if not private.can_write_business(s,d,a,array['owner','administrator','cashier','staff']::public.store_member_role[])then raise exception 'Store membership, role, actor, or device validation failed' using errcode='42501';end if;
+ if k in('bills','employees','payroll_entries','vault_transactions') and not private.has_store_role(s,array['owner','administrator']::public.store_member_role[])then raise exception 'Manager role is required for sensitive financial operations' using errcode='42501';end if;
+ if k='utang_entries'then insert into public.utang_entries(id,store_id,customer_id,occurred_at,entry_type,amount,reference_id,notes,operation_id,created_at,updated_at,version,updated_by,device_id)values(eid,s,(p->>'customerId')::uuid,(p->>'date')::timestamptz,p->>'type',(p->>'amount')::bigint,nullif(p->>'referenceId','')::uuid,coalesce(p->>'notes',''),op_id,(p#>>'{sync,createdAt}')::timestamptz,(p#>>'{sync,updatedAt}')::timestamptz,1,a,d);
+ elsif k='gcash_transactions'then insert into public.gcash_transactions(id,store_id,occurred_at,transaction_type,amount,service_fee,customer_id,reference_number,notes,operation_id,created_at,updated_at,version,updated_by,device_id)values(eid,s,(p->>'date')::timestamptz,p->>'type',(p->>'amount')::bigint,(p->>'serviceFee')::bigint,nullif(p->>'customerId','')::uuid,coalesce(p->>'referenceNumber',''),coalesce(p->>'notes',''),op_id,(p#>>'{sync,createdAt}')::timestamptz,(p#>>'{sync,updatedAt}')::timestamptz,1,a,d);
+ elsif k='vault_transactions'then insert into public.vault_transactions(id,store_id,occurred_at,transaction_type,amount,reference_id,notes,operation_id,created_at,updated_at,version,updated_by,device_id)values(eid,s,(p->>'date')::timestamptz,p->>'type',(p->>'amount')::bigint,nullif(p->>'referenceId','')::uuid,coalesce(p->>'notes',''),op_id,(p#>>'{sync,createdAt}')::timestamptz,(p#>>'{sync,updatedAt}')::timestamptz,1,a,d);
+ elsif k='payroll_entries'then insert into public.payroll_entries(id,store_id,employee_id,pay_period_start,pay_period_end,base_amount,additional_pay,deductions,net_pay,paid_date,payment_method,notes,operation_id,created_at,updated_at,version,updated_by,device_id)values(eid,s,(p->>'employeeId')::uuid,(p->>'payPeriodStart')::timestamptz,(p->>'payPeriodEnd')::timestamptz,(p->>'baseAmount')::bigint,(p->>'additionalPay')::bigint,(p->>'deductions')::bigint,(p->>'netPay')::bigint,(p->>'paidDate')::timestamptz,p->>'paymentMethod',coalesce(p->>'notes',''),op_id,(p#>>'{sync,createdAt}')::timestamptz,(p#>>'{sync,updatedAt}')::timestamptz,1,a,d);
+ elsif k='bills'then insert into public.bills(id,store_id,name,category,provider,amount,due_date,recurrence,status,paid_date,payment_method,reference_number,notes,created_at,updated_at,version,updated_by,device_id)values(eid,s,p->>'name',p->>'category',p->>'provider',(p->>'amount')::bigint,(p->>'dueDate')::timestamptz,p->>'recurrence',p->>'status',nullif(p->>'paidDate','')::timestamptz,nullif(p->>'paymentMethod',''),nullif(p->>'referenceNumber',''),coalesce(p->>'notes',''),(p#>>'{sync,createdAt}')::timestamptz,(p#>>'{sync,updatedAt}')::timestamptz,(p#>>'{sync,version}')::bigint,a,d)on conflict(id)do update set status=excluded.status,paid_date=excluded.paid_date,updated_at=excluded.updated_at,version=excluded.version,updated_by=a,device_id=d where bills.store_id=s and bills.version<excluded.version;
+ else insert into public.employees(id,store_id,name,role,contact,start_date,pay_type,default_rate,active,notes,created_at,updated_at,version,updated_by,device_id)values(eid,s,p->>'name',p->>'role',p->>'contact',(p->>'startDate')::timestamptz,p->>'payType',(p->>'defaultRate')::bigint,(p->>'active')::boolean,coalesce(p->>'notes',''),(p#>>'{sync,createdAt}')::timestamptz,(p#>>'{sync,updatedAt}')::timestamptz,(p#>>'{sync,version}')::bigint,a,d)on conflict(id)do update set name=excluded.name,role=excluded.role,contact=excluded.contact,active=excluded.active,updated_at=excluded.updated_at,version=excluded.version,updated_by=a,device_id=d where employees.store_id=s and employees.version<excluded.version;
+ end if;
+ insert into public.sync_operations(id,operation_id,store_id,entity_type,entity_id,operation,payload,processed_at,updated_by,device_id)values(gen_random_uuid(),op_id,s,k,eid,p_operation->>'operation',p,now(),a,d);
+ return jsonb_build_object('operationId',op_id,'status','processed','duplicate',false);
+exception when unique_violation then if exists(select 1 from public.sync_operations where operation_id=op_id)then return jsonb_build_object('operationId',op_id,'status','processed','duplicate',true);end if;raise;end;$$;
+revoke all on function public.process_financial_operation(jsonb)from public;grant execute on function public.process_financial_operation(jsonb)to authenticated;
+create or replace function public.pull_sync_changes(p_store_id uuid,p_after_changed_at timestamptz default '1970-01-01',p_after_id uuid default '00000000-0000-0000-0000-000000000000',p_limit integer default 100)
+returns jsonb language plpgsql security definer set search_path=public,private,pg_temp as $$
+declare changes jsonb;row_count integer;last_changed_at timestamptz;last_id uuid;
+begin
+ if not private.is_active_store_member(p_store_id) then raise exception 'Active store membership is required' using errcode='42501';end if;
+ if p_limit not between 1 and 500 then raise exception 'Pull limit must be between 1 and 500' using errcode='22023';end if;
+ with combined as(
+ select 'product_categories'::text entity_type,server_changed_at,id,to_jsonb(t)-'server_changed_at' record from public.product_categories t where store_id=p_store_id and(server_changed_at,id)>(p_after_changed_at,p_after_id)
+ union all select 'suppliers',server_changed_at,id,to_jsonb(t)-'server_changed_at' from public.suppliers t where store_id=p_store_id and(server_changed_at,id)>(p_after_changed_at,p_after_id)
+ union all select 'products',server_changed_at,id,to_jsonb(t)-'server_changed_at' from public.products t where store_id=p_store_id and(server_changed_at,id)>(p_after_changed_at,p_after_id)
+ union all select 'customers',server_changed_at,id,to_jsonb(t)-'server_changed_at' from public.customers t where store_id=p_store_id and(server_changed_at,id)>(p_after_changed_at,p_after_id)
+ union all select 'inventory_batches',server_changed_at,id,to_jsonb(t)-'server_changed_at' from public.inventory_batches t where store_id=p_store_id and(server_changed_at,id)>(p_after_changed_at,p_after_id)
+ union all select 'stock_movements',server_changed_at,id,to_jsonb(t)-'server_changed_at' from public.stock_movements t where store_id=p_store_id and(server_changed_at,id)>(p_after_changed_at,p_after_id)
+ union all select 'utang_entries',server_changed_at,id,to_jsonb(t)-'server_changed_at' from public.utang_entries t where store_id=p_store_id and(server_changed_at,id)>(p_after_changed_at,p_after_id)
+ union all select 'gcash_transactions',server_changed_at,id,to_jsonb(t)-'server_changed_at' from public.gcash_transactions t where store_id=p_store_id and(server_changed_at,id)>(p_after_changed_at,p_after_id)
+ union all select 'bills',server_changed_at,id,to_jsonb(t)-'server_changed_at' from public.bills t where store_id=p_store_id and(server_changed_at,id)>(p_after_changed_at,p_after_id)
+ union all select 'employees',server_changed_at,id,to_jsonb(t)-'server_changed_at' from public.employees t where store_id=p_store_id and(server_changed_at,id)>(p_after_changed_at,p_after_id)
+ union all select 'payroll_entries',server_changed_at,id,to_jsonb(t)-'server_changed_at' from public.payroll_entries t where store_id=p_store_id and(server_changed_at,id)>(p_after_changed_at,p_after_id)
+ union all select 'vault_transactions',server_changed_at,id,to_jsonb(t)-'server_changed_at' from public.vault_transactions t where store_id=p_store_id and(server_changed_at,id)>(p_after_changed_at,p_after_id)
+ ),page as(select*from combined order by server_changed_at,id limit p_limit)
+ select coalesce(jsonb_agg(jsonb_build_object('entityType',entity_type,'changedAt',server_changed_at,'record',record)order by server_changed_at,id),'[]'),count(*),max(server_changed_at) into changes,row_count,last_changed_at from page;
+ if row_count>0 then select id into last_id from(select(entry->>'changedAt')::timestamptz changed_at,(entry->'record'->>'id')::uuid id from jsonb_array_elements(changes)entry order by changed_at desc,id desc limit 1)q;end if;
+ return jsonb_build_object('changes',changes,'nextCursor',case when row_count=0 then jsonb_build_object('changedAt',p_after_changed_at,'id',p_after_id)else jsonb_build_object('changedAt',last_changed_at,'id',last_id)end,'hasMore',row_count=p_limit);
+end;$$;
+comment on function public.process_inventory_operation(jsonb) is 'Phase 12 idempotent append-only movement ingestion with transactional cached quantity updates.';

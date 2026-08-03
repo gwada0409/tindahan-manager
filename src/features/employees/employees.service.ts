@@ -1,23 +1,18 @@
-import { db } from '@/db/database';
-import { Employee, PayrollEntry } from '@/types';
-import { generateId } from '@/shared/utils/id';
+import { employeeRepo } from '@/repositories/EntityRepositories';
+import { payrollEntryRepo } from '@/repositories/FinancialRepository';
+import type { Employee, PayrollEntry } from '@/types';
 
 export class EmployeesService {
   async getEmployees(): Promise<Employee[]> {
-    // Employees list is typically small enough for toArray(), but we can paginate if needed.
-    return await db.employees.toArray();
+    return employeeRepo.list();
   }
 
-  async addEmployee(data: Omit<Employee, 'id'>): Promise<string> {
-    const id = generateId();
-    await db.employees.add({ ...data, id });
-    return id;
+  async addEmployee(data: Omit<Employee, 'id' | 'sync'>): Promise<string> {
+    return employeeRepo.add(data);
   }
 
-  async processPayroll(data: Omit<PayrollEntry, 'id'>): Promise<string> {
-    const id = generateId();
-    await db.payrollEntries.add({ ...data, id });
-    return id;
+  async processPayroll(data: Omit<PayrollEntry, 'id' | 'sync'>): Promise<string> {
+    return payrollEntryRepo.add(data);
   }
 }
 

@@ -1,6 +1,7 @@
-import { db } from '@/db/database';
 import { subDays, startOfDay, format } from 'date-fns';
 import { dashboardService } from '@/features/dashboard/dashboard.service';
+import { inventoryRepo } from '@/features/inventory/inventory.repository';
+import { saleItemRepo, saleRepo } from '@/repositories/SaleRepository';
 
 export interface DailySalesData {
   name: string;
@@ -19,59 +20,51 @@ export interface ReportsData {
 export class ReportsService {
   async getReportsData(): Promise<ReportsData> {
     const totalUtang = await dashboardService.getTotalOutstandingUtang();
-    
-    // Inventory Value
-    let inventoryValue = 0;
-    const products = await db.products.toArray();
-    const productCostMap: Record<string, number> = {};
-    products.forEach(p => productCostMap[p.id] = p.costPrice);
+    const [products, batches] = await Promise.all([
+      inventoryRepo.listProducts(),
+      inventoryRepo.listBatches(),
+    ]);
 
-    // Only get active batches for value computation
-    const activeBatches = await db.inventoryBatches.filter(b => b.remainingQuantity > 0).toArray();
-    activeBatches.forEach(b => {
-      inventoryValue += b.remainingQuantity * (b.unitCost || productCostMap[b.productId] || 0);
+    let inventoryValue = 0;
+    const productCostMap: Record<string, number> = {};
+    products.forEach(product => {
+      productCostMap[product.id] = product.costPrice;
+    });
+    batches.filter(batch => batch.remainingQuantity > 0).forEach(batch => {
+      inventoryValue += batch.remainingQuantity * (batch.unitCost || productCostMap[batch.productId] || 0);
     });
 
-    // 7-day Sales & Profit
     const sevenDaysAgo = startOfDay(subDays(new Date(), 6));
-    const recentSales = await db.sales.where('date').aboveOrEqual(sevenDaysAgo).toArray();
-    
-    const saleIds = recentSales.map(s => s.id);
-    // Since saleIds can be large, we might need a workaround or just fetch all saleItems and filter in memory if Dexie lacks where(in)
-    // Dexie supports anyOf, which translates to SQL IN clause equivalent.
-    const recentSaleItems = await db.saleItems.where('saleId').anyOf(saleIds).toArray();
+    const recentSales = (await saleRepo.list()).filter(sale => sale.date >= sevenDaysAgo);
+    const recentSaleIds = new Set(recentSales.map(sale => sale.id));
+    const recentSaleItems = (await saleItemRepo.list())
+      .filter(item => recentSaleIds.has(item.saleId));
 
     let grossRevenue7d = 0;
     let estProfit7d = 0;
-    
-    // Initialize chart data
     const days: Record<string, DailySalesData> = {};
+
     for (let i = 6; i >= 0; i--) {
-      const d = startOfDay(subDays(new Date(), i));
-      const key = format(d, 'yyyy-MM-dd');
-      days[key] = {
-        name: format(d, 'EEE'),
+      const date = startOfDay(subDays(new Date(), i));
+      days[format(date, 'yyyy-MM-dd')] = {
+        name: format(date, 'EEE'),
         sales: 0,
-        _date: d
+        _date: date,
       };
     }
 
     recentSales.forEach(sale => {
       grossRevenue7d += sale.total;
-      
       const key = format(new Date(sale.date), 'yyyy-MM-dd');
-      if (days[key]) {
-        days[key].sales += (sale.total / 100);
-      }
+      if (days[key]) days[key].sales += sale.total / 100;
 
-      // Calculate profit
-      const items = recentSaleItems.filter(item => item.saleId === sale.id);
-      let saleCost = 0;
-      items.forEach(item => {
-        const cost = productCostMap[item.itemId] || 0;
-        saleCost += cost * item.quantity;
-      });
-      estProfit7d += (sale.total - saleCost);
+      const saleCost = recentSaleItems
+        .filter(item => item.saleId === sale.id)
+        .reduce(
+          (cost, item) => cost + (productCostMap[item.itemId] || 0) * item.quantity,
+          0,
+        );
+      estProfit7d += sale.total - saleCost;
     });
 
     return {
@@ -79,7 +72,7 @@ export class ReportsService {
       inventoryValue,
       grossRevenue7d,
       estProfit7d,
-      chartData: Object.values(days)
+      chartData: Object.values(days),
     };
   }
 }

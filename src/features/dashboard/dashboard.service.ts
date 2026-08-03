@@ -1,42 +1,51 @@
-import { db } from '@/db/database';
+import { inventoryRepo } from '@/features/inventory/inventory.repository';
+import { saleRepo } from '@/repositories/SaleRepository';
+import { utangEntryRepo } from '@/repositories/FinancialRepository';
 import { getStartOfDay } from '@/shared/utils/date';
-import { Sale } from '@/types';
+import type { Sale } from '@/types';
 
 export class DashboardService {
   async getTodaySalesTotal(): Promise<number> {
     const today = getStartOfDay();
-    const todaySales = await db.sales.where('date').aboveOrEqual(today).toArray();
-    return todaySales.reduce((acc, sale) => acc + sale.total, 0);
+    return (await saleRepo.list())
+      .filter(sale => sale.date >= today)
+      .reduce((total, sale) => total + sale.total, 0);
   }
 
   async getTodayTransactionsCount(): Promise<number> {
     const today = getStartOfDay();
-    return await db.sales.where('date').aboveOrEqual(today).count();
+    return (await saleRepo.list()).filter(sale => sale.date >= today).length;
   }
 
   async getRecentTransactions(limit = 8): Promise<Sale[]> {
-    return await db.sales.orderBy('date').reverse().limit(limit).toArray();
+    return (await saleRepo.list())
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .slice(0, limit);
   }
 
   async getTotalOutstandingUtang(): Promise<number> {
-    const entries = await db.utangEntries.toArray();
     const balances: Record<string, number> = {};
-    entries.forEach(e => {
-      balances[e.customerId] = (balances[e.customerId] || 0) + e.amount;
+    (await utangEntryRepo.list()).forEach(entry => {
+      balances[entry.customerId] = (balances[entry.customerId] || 0) + entry.amount;
     });
-    return Object.values(balances).reduce((sum, bal) => bal > 0 ? sum + bal : sum, 0);
+    return Object.values(balances).reduce(
+      (sum, balance) => balance > 0 ? sum + balance : sum,
+      0,
+    );
   }
 
   async getOutOfStockCount(): Promise<number> {
-    const products = await db.products.toArray();
-    const batches = await db.inventoryBatches.toArray();
-    
+    const [products, batches] = await Promise.all([
+      inventoryRepo.listProducts(),
+      inventoryRepo.listBatches(),
+    ]);
     const stock: Record<string, number> = {};
-    batches.forEach(b => {
-      stock[b.productId] = (stock[b.productId] || 0) + b.remainingQuantity;
+
+    batches.forEach(batch => {
+      stock[batch.productId] = (stock[batch.productId] || 0) + batch.remainingQuantity;
     });
-    
-    return products.filter(p => (stock[p.id] || 0) <= p.reorderLevel).length;
+
+    return products.filter(product => (stock[product.id] || 0) <= product.reorderLevel).length;
   }
 }
 

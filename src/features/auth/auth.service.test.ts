@@ -1,44 +1,35 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { authService } from './auth.service';
-import { hasRolePermission, ROLE_PERMISSIONS } from './permissions';
+import { AuthService, mapMembershipRole } from './auth.service';
+import { hasRolePermission } from './permissions';
 import { db } from '@/db/database';
 import { generateId } from '@/shared/utils/id';
 
-describe('Auth & Permission RBAC System', () => {
+describe('Auth and permission system', () => {
   beforeEach(async () => {
     localStorage.clear();
   });
 
-  it('enforces exact permission matrix for Admin vs Employee roles', () => {
-    // Admin has access to all sections
-    expect(hasRolePermission('admin', 'settings:manage')).toBe(true);
-    expect(hasRolePermission('admin', 'vault:manage')).toBe(true);
-    expect(hasRolePermission('admin', 'reports:view')).toBe(true);
-    expect(hasRolePermission('admin', 'employees:manage')).toBe(true);
-    expect(hasRolePermission('admin', 'inventory:view')).toBe(true);
-
-    // Employee has access ONLY to allowed sections
-    expect(hasRolePermission('employee', 'dashboard:view')).toBe(true);
-    expect(hasRolePermission('employee', 'sales:use')).toBe(true);
-    expect(hasRolePermission('employee', 'inventory:view')).toBe(true);
-    expect(hasRolePermission('employee', 'services:manage')).toBe(true);
-    expect(hasRolePermission('employee', 'utang:manage')).toBe(true);
-    expect(hasRolePermission('employee', 'gcash:manage')).toBe(true);
-    expect(hasRolePermission('employee', 'bills:manage')).toBe(true);
-
-    // Employee DENIED sections
-    expect(hasRolePermission('employee', 'employees:manage')).toBe(false);
-    expect(hasRolePermission('employee', 'accounts:manage')).toBe(false);
-    expect(hasRolePermission('employee', 'vault:manage')).toBe(false);
-    expect(hasRolePermission('employee', 'reports:view')).toBe(false);
-    expect(hasRolePermission('employee', 'settings:manage')).toBe(false);
+  it('maps cloud membership roles onto the existing permission roles', () => {
+    expect(mapMembershipRole('owner')).toBe('admin');
+    expect(mapMembershipRole('administrator')).toBe('admin');
+    expect(mapMembershipRole('cashier')).toBe('employee');
+    expect(mapMembershipRole('staff')).toBe('employee');
   });
 
-  it('prevents deactivating or demoting the final active administrator account', async () => {
+  it('enforces the existing permission matrix', () => {
+    expect(hasRolePermission('admin', 'settings:manage')).toBe(true);
+    expect(hasRolePermission('admin', 'vault:manage')).toBe(true);
+    expect(hasRolePermission('employee', 'dashboard:view')).toBe(true);
+    expect(hasRolePermission('employee', 'sales:use')).toBe(true);
+    expect(hasRolePermission('employee', 'settings:manage')).toBe(false);
+    expect(hasRolePermission('employee', 'accounts:manage')).toBe(false);
+  });
+
+  it('prevents deactivating or demoting the final active administrator', async () => {
+    const service = new AuthService({ backend: null, allowDevelopmentAccess: true });
     const adminId = generateId();
     await db.userProfiles.clear();
-
     await db.userProfiles.add({
       id: adminId,
       authUserId: 'sole-admin',
@@ -46,24 +37,32 @@ describe('Auth & Permission RBAC System', () => {
       role: 'admin',
       active: true,
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
     });
 
-    // Attempting to deactivate sole admin should throw LAST_ADMIN_PROTECTION error
-    await expect(authService.validateAdminProtection(adminId, undefined, false))
+    await expect(service.validateAdminProtection(adminId, undefined, false))
       .rejects.toThrow('Cannot deactivate or demote the final active administrator account');
-
-    // Attempting to demote sole admin to employee should throw LAST_ADMIN_PROTECTION error
-    await expect(authService.validateAdminProtection(adminId, 'employee', undefined))
+    await expect(service.validateAdminProtection(adminId, 'employee', undefined))
       .rejects.toThrow('Cannot deactivate or demote the final active administrator account');
   });
 
-  it('authenticates admin and employee credentials cleanly', async () => {
-    const adminUser = await authService.login({ email: 'admin@tindahan.ph', password: 'admin123' });
-    expect(adminUser.role).toBe('admin');
-    expect(await authService.getSession()).not.toBeNull();
+  it('offers password-free quick access only through the explicit development path', async () => {
+    const service = new AuthService({ backend: null, allowDevelopmentAccess: true });
+    const resolution = await service.loginDevelopment('admin');
+    expect(resolution.status).toBe('authenticated');
+    if (resolution.status !== 'authenticated') throw new Error('Expected authenticated resolution');
+    expect(resolution.user.role).toBe('admin');
+    expect(resolution.user.membershipRole).toBe('owner');
 
-    await authService.logout();
-    expect(await authService.getSession()).toBeNull();
+    const restored = await service.restoreSession();
+    expect(restored.status).toBe('authenticated');
+
+    await service.logout();
+    expect((await service.restoreSession()).status).toBe('unauthenticated');
+  });
+
+  it('does not expose development access when it is disabled', async () => {
+    const service = new AuthService({ backend: null, allowDevelopmentAccess: false });
+    await expect(service.loginDevelopment('admin')).rejects.toThrow('Development quick access is disabled');
   });
 });

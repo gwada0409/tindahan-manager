@@ -18,5 +18,6 @@ export const APP_ROUTES: AppRoute[] = [
   { path: '/employees', label: 'Employees', requiredPermission: 'employees:manage', iconName: 'Users' },
   { path: '/vault', label: 'Vault', requiredPermission: 'vault:manage', iconName: 'Wallet' },
   { path: '/reports', label: 'Reports', requiredPermission: 'reports:view', iconName: 'BarChart3' },
+  { path: '/conflicts', label: 'Conflicts', requiredPermission: 'settings:manage', iconName: 'ShieldAlert' },
   { path: '/settings', label: 'Settings', requiredPermission: 'settings:manage', iconName: 'Settings' }
 ];

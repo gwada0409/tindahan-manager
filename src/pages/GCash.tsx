@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
-import { v4 as uuidv4 } from 'uuid';
 import { format } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/Table';

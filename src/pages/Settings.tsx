@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '@/db/database';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -7,11 +9,13 @@ import { useToast } from '@/components/ui/Toast';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { settingsService } from '@/features/settings/settings.service';
 import { AppearanceSettings } from '@/features/settings/components/AppearanceSettings';
+import { DeviceManagement } from '@/features/devices/DeviceManagement';
 
 export function Settings() {
   const [storeInfo, setStoreInfo] = useState<Store | null>(null);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const { showToast } = useToast();
+  const pendingChanges = useLiveQuery(() => db.syncQueue.count(), []) ?? 0;
 
   const fetchStore = async () => {
     const store = await settingsService.getStoreInfo();
@@ -39,18 +43,23 @@ export function Settings() {
     }
   };
 
+  const downloadBackup = async (data: unknown, reason = 'backup') => {
+    const jsonBlob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const compress = jsonBlob.size >= 1_000_000 && typeof CompressionStream !== 'undefined';
+    const blob = compress ? await new Response(jsonBlob.stream().pipeThrough(new CompressionStream('gzip'))).blob() : jsonBlob;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tindahan-${reason}-${new Date().toISOString().replace(/[:.]/g, '-')}.json${compress ? '.gz' : ''}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleExport = async () => {
     try {
-      const data = await settingsService.exportData();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `tindahan-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast('Backup exported!');
-    } catch (err) {
+      await downloadBackup(await settingsService.exportData());
+      showToast('Checksummed backup exported!');
+    } catch {
       showToast('Export failed.', 'error');
     }
   };
@@ -58,16 +67,21 @@ export function Settings() {
   const handleImport = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json';
+    input.accept = '.json,.gz,.json.gz';
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
       try {
-        const text = await file.text();
-        const data = JSON.parse(text);
+        const text = file.name.endsWith('.gz') && typeof DecompressionStream !== 'undefined'
+          ? await new Response(file.stream().pipeThrough(new DecompressionStream('gzip'))).text()
+          : await file.text();
+        const data: unknown = JSON.parse(text);
+        const preview = await settingsService.validateBackup(data);
+        const approved = window.confirm(`Restore ${preview.totalRecords} records exported ${new Date(preview.exportedAt).toLocaleString()}? Active local tables will be replaced after an automatic recovery point is stored.`);
+        if (!approved) return;
         await settingsService.importData(data);
-        showToast('Data imported successfully!');
-        await fetchStore(); // Refresh store info
+        showToast('Validated backup restored successfully!');
+        await fetchStore();
       } catch (err) {
         showToast('Import failed. Check your file format.', 'error');
       }
@@ -77,6 +91,7 @@ export function Settings() {
 
   const handleReset = async () => {
     try {
+      await downloadBackup(await settingsService.exportData(), 'pre-reset');
       await settingsService.resetDatabase();
       showToast('All data cleared. Reloading...', 'warning');
       setTimeout(() => window.location.reload(), 1500);
@@ -128,6 +143,8 @@ export function Settings() {
         </CardContent>
       </Card>
 
+      <DeviceManagement />
+
       {/* Data Management */}
       <Card>
         <CardHeader>
@@ -135,7 +152,7 @@ export function Settings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Export your data to keep a backup or transfer it to another device. You can import it later to restore your records.
+            Export a versioned, checksummed backup for another device or disaster recovery. Restore validates every table and checksum before replacing active local data in one transaction.
           </p>
           <div className="flex gap-4">
             <Button variant="outline" onClick={handleExport}>Export Backup (JSON)</Button>
@@ -152,7 +169,7 @@ export function Settings() {
         onClose={() => setIsResetConfirmOpen(false)}
         onConfirm={handleReset}
         title="Reset All Data"
-        message="This will permanently delete ALL your data including products, sales, customers, and settings. This cannot be undone!"
+        message={`This permanently deletes all local products, sales, customers, settings, and ${pendingChanges} pending cloud change${pendingChanges === 1 ? '' : 's'}. Export a backup first. This cannot be undone.`}
         confirmText="Delete Everything"
         variant="destructive"
       />

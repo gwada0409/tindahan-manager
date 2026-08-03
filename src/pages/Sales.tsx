@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
 import { useCartStore } from '@/store/cartStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -13,6 +12,7 @@ import { checkoutService } from '@/features/sales/checkout.service';
 import { inventoryRepo } from '@/features/inventory/inventory.repository';
 import { stockService } from '@/features/inventory/stock.service';
 import { StockIndicator } from '@/features/inventory/components/StockIndicator';
+import { customerRepo } from '@/repositories/CustomerRepository';
 
 export function Sales() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -26,8 +26,8 @@ export function Sales() {
   const { items, addItem, updateQuantity, removeItem, getSubtotal, getTotal, discount, setDiscount, clearCart } = useCartStore();
   const { showToast } = useToast();
 
-  const customers = useLiveQuery(() => db.customers.toArray(), []) || [];
-  const inventoryBatches = useLiveQuery(() => db.inventoryBatches.toArray(), []) || [];
+  const customers = useLiveQuery(() => customerRepo.list(), []) || [];
+  const inventoryBatches = useLiveQuery(() => inventoryRepo.listBatches(), []) || [];
   
   const filteredProducts = useLiveQuery(
     () => inventoryRepo.searchProducts(searchTerm, 50),
@@ -112,7 +112,8 @@ export function Sales() {
         paymentMethod,
         amountPaid: paymentMethod === 'cash' ? Math.round(parseFloat(amountReceived) * 100) : 0,
         customerId: paymentMethod === 'utang' ? customerId : undefined,
-        gcashReference: paymentMethod === 'gcash' ? referenceNumber : undefined
+        gcashReference: paymentMethod === 'gcash' ? referenceNumber : undefined,
+        discount
       });
       
       showToast(`Sale of ₱${(total / 100).toFixed(2)} recorded!`, 'success');

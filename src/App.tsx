@@ -1,10 +1,12 @@
 import React from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import { ToastProvider } from './components/ui/Toast';
+import { PwaUpdatePrompt } from './components/PwaUpdatePrompt';
 import { AppLayout } from './components/layout/AppLayout';
 import { Login } from './pages/Login';
 import { RequireAuth } from './features/auth/components/RequireAuth';
 import { RequirePermission } from './features/auth/components/RequirePermission';
+import { AuthProvider } from './features/auth/AuthProvider';
 
 import { Dashboard } from './pages/Dashboard';
 import { Inventory } from './pages/Inventory';
@@ -16,20 +18,32 @@ import { Employees } from './pages/Employees';
 import { Vault } from './pages/Vault';
 import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
+import { Conflicts } from './pages/Conflicts';
+import { ForgotPassword } from './pages/ForgotPassword';
+import { ResetPassword } from './pages/ResetPassword';
+import { StoreSelection } from './pages/StoreSelection';
+import { InitialMigration } from './pages/InitialMigration';
+import { RequireInitialMigration } from './features/migration/RequireInitialMigration';
 
 function App() {
   return (
     <ToastProvider>
+      <PwaUpdatePrompt />
       <HashRouter>
-        <Routes>
+        <AuthProvider>
+          <Routes>
           {/* Public Login Route */}
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/select-store" element={<StoreSelection />} />
+          <Route path="/migration" element={<RequireAuth><InitialMigration /></RequireAuth>} />
 
           {/* Protected Application Routes */}
           <Route
             element={
               <RequireAuth>
-                <AppLayout />
+                <RequireInitialMigration><AppLayout /></RequireInitialMigration>
               </RequireAuth>
             }
           >
@@ -114,6 +128,14 @@ function App() {
               }
             />
             <Route
+              path="/conflicts"
+              element={
+                <RequirePermission permission="settings:manage">
+                  <Conflicts />
+                </RequirePermission>
+              }
+            />
+            <Route
               path="/settings"
               element={
                 <RequirePermission permission="settings:manage">
@@ -122,7 +144,8 @@ function App() {
               }
             />
           </Route>
-        </Routes>
+          </Routes>
+        </AuthProvider>
       </HashRouter>
     </ToastProvider>
   );

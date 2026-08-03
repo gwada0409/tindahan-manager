@@ -39,3 +39,28 @@ export const schemaV3 = {
   ...schemaV2,
   userProfiles: 'id, &authUserId, employeeId, role, active'
 };
+
+const syncIndexes = 'sync.storeId, sync.syncStatus, sync.updatedAt, sync.deletedAt';
+
+export const schemaV4 = Object.fromEntries(
+  Object.entries(schemaV3).map(([tableName, indexes]) => [
+    tableName,
+    `${indexes}, ${syncIndexes}`,
+  ])
+) as Record<keyof typeof schemaV3, string>;
+
+export const schemaV5 = {
+  ...schemaV4,
+  syncQueue: '++queueId, &operationId, storeId, entityType, entityId, operation, status, createdAt, nextAttemptAt, [storeId+status]',
+  syncState: 'id, storeId, lastPulledAt, lastSuccessfulSyncAt',
+  syncConflicts: '++id, storeId, entityType, entityId, detectedAt, resolved, [storeId+resolved]',
+};
+export const schemaV6 = {
+  ...schemaV5,
+  migrationBackups: 'id, createdAt, sourceStoreId',
+  migrationState: 'id, targetStoreId, mode, status, updatedAt',
+};
+export const schemaV7 = {
+  ...schemaV6,
+  saleAdjustments: 'id, saleId, type, date, sync.storeId, sync.syncStatus, [saleId+date]',
+};

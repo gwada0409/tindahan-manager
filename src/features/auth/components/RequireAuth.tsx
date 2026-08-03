@@ -1,16 +1,10 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../auth.store';
 
 export function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { status, refreshProfile } = useAuthStore();
+  const status = useAuthStore((state) => state.status);
   const location = useLocation();
-
-  useEffect(() => {
-    if (status === 'loading') {
-      refreshProfile();
-    }
-  }, []);
 
   if (status === 'loading') {
     return (
@@ -25,6 +19,10 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
 
   if (status === 'unauthenticated') {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (status === 'selecting-store') {
+    return <Navigate to="/select-store" replace />;
   }
 
   return <>{children}</>;

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
-import { v4 as uuidv4 } from 'uuid';
+import type { Customer } from '@/types';
+import { customerRepo } from '@/repositories/CustomerRepository';
+import { utangEntryRepo } from '@/repositories/FinancialRepository';
 import { format } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/Table';
@@ -14,7 +15,7 @@ import { utangService } from '@/features/utang/utang.service';
 
 export function Utang() {
   const { showToast } = useToast();
-  const customers = useLiveQuery(() => db.customers.toArray(), []);
+  const customers = useLiveQuery(() => customerRepo.list(), []);
   
   // Use service for balances instead of full table pull in UI
   const balances = useLiveQuery(() => utangService.getCustomerBalances(), []) || {};
@@ -25,7 +26,7 @@ export function Utang() {
   
   const [isPayOpen, setIsPayOpen] = useState(false);
   const [payAmount, setPayAmount] = useState('');
-  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
   const [isViewOpen, setIsViewOpen] = useState(false);
 
@@ -38,8 +39,7 @@ export function Utang() {
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await db.customers.add({
-        id: uuidv4(),
+      await customerRepo.add({
         fullName: addForm.fullName,
         phoneNumber: addForm.phoneNumber,
         address: addForm.address,
@@ -60,8 +60,7 @@ export function Utang() {
     e.preventDefault();
     if (!selectedCustomer) return;
     try {
-      await db.utangEntries.add({
-        id: uuidv4(),
+      await utangEntryRepo.add({
         customerId: selectedCustomer.id,
         date: new Date(),
         type: 'payment',
@@ -76,12 +75,12 @@ export function Utang() {
     }
   };
 
-  const openPay = (c: any) => {
+  const openPay = (c: Customer) => {
     setSelectedCustomer(c);
     setIsPayOpen(true);
   };
 
-  const openView = (c: any) => {
+  const openView = (c: Customer) => {
     setSelectedCustomer(c);
     setIsViewOpen(true);
   };

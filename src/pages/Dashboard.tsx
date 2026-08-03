@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
+import { inventoryRepo } from '@/features/inventory/inventory.repository';
 import { format } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/Table';
@@ -19,8 +19,8 @@ export function Dashboard() {
       dashboardService.getTodayTransactionsCount(),
       dashboardService.getTotalOutstandingUtang(),
       dashboardService.getRecentTransactions(8),
-      db.products.toArray(),
-      db.inventoryBatches.toArray()
+      inventoryRepo.listProducts(),
+      inventoryRepo.listBatches()
     ]);
 
     // Calculate real stock metrics & restock list

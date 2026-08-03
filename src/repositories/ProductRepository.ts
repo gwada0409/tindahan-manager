@@ -1,17 +1,25 @@
-import { BaseRepository } from './BaseRepository';
-import { Product } from '../types';
+import type { Table } from 'dexie';
+import { BaseRepository, type RepositoryQueueConfig } from './BaseRepository';
+import type { Product } from '../types';
 import { db } from '../db/database';
+import type { RepositoryContextProvider } from './repositoryContext';
+import { getDefaultRepositoryContext } from './repositoryContext';
 
 export class ProductRepository extends BaseRepository<Product> {
-  constructor() {
-    super(db.products);
+  constructor(
+    table: Table<Product, string> = db.products,
+    contextProvider: RepositoryContextProvider = getDefaultRepositoryContext,
+    queue: RepositoryQueueConfig | undefined = table === db.products
+      ? { database: db, table: db.syncQueue, entityType: 'products' }
+      : undefined
+  ) {
+    super(table, contextProvider, queue);
   }
 
   async getLowStockProducts(): Promise<Product[]> {
-    const products = await this.getAll();
-    // Assuming simple inventory tracking where remaining stock is computed from batches
-    // In a real scenario, this would be a more complex join.
-    return products.filter(p => true); // Placeholder logic
+    // Stock quantities remain batch-derived; callers should combine this list
+    // with StockService summaries until the inventory repository owns the query.
+    return this.list();
   }
 }
 

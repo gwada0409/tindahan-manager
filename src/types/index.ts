@@ -1,4 +1,7 @@
-export interface Store {
+import type { SyncableEntity } from '@/domain/sync/sync.types';
+export type { SyncConflict, SyncMetadata, InitialMigrationMode, InitialMigrationState, MigrationBackup, PullCursor, SyncOperation, SyncQueueItem, SyncQueueStatus, SyncState, SyncStatus, SyncableEntity } from '@/domain/sync/sync.types';
+
+export interface Store extends SyncableEntity {
   id: string;
   name: string;
   ownerName: string;
@@ -28,7 +31,7 @@ export interface ProductStockSummary {
 
 export type UserRole = 'admin' | 'employee';
 
-export interface UserProfile {
+export interface UserProfile extends SyncableEntity {
   id: string;
   authUserId: string;
   employeeId?: string;
@@ -64,12 +67,12 @@ export type Permission =
   | 'settings:manage'
   | 'accounts:manage';
 
-export interface Category {
+export interface Category extends SyncableEntity {
   id: string;
   name: string;
 }
 
-export interface Product {
+export interface Product extends SyncableEntity {
   id: string;
   name: string;
   sku: string;
@@ -84,7 +87,7 @@ export interface Product {
   active: boolean;
 }
 
-export interface InventoryBatch {
+export interface InventoryBatch extends SyncableEntity {
   id: string;
   productId: string;
   quantityReceived: number;
@@ -97,18 +100,18 @@ export interface InventoryBatch {
   notes: string;
 }
 
-export interface StockMovement {
+export interface StockMovement extends SyncableEntity {
   id: string;
   productId: string;
   batchId?: string;
-  type: 'restock' | 'adjustment' | 'damaged' | 'expired' | 'return' | 'sale';
+  type: 'restock' | 'adjustment' | 'damaged' | 'expired' | 'return' | 'sale' | 'transfer-out' | 'transfer-in';
   quantity: number; // Can be negative for sale/damaged/expired
   date: Date;
   referenceId?: string; // Link to sale or adjustment record
   notes: string;
 }
 
-export interface Service {
+export interface Service extends SyncableEntity {
   id: string;
   name: string;
   categoryId: string;
@@ -118,7 +121,7 @@ export interface Service {
   active: boolean;
 }
 
-export interface Customer {
+export interface Customer extends SyncableEntity {
   id: string;
   fullName: string;
   phoneNumber: string;
@@ -129,7 +132,7 @@ export interface Customer {
   createdAt: Date;
 }
 
-export interface UtangEntry {
+export interface UtangEntry extends SyncableEntity {
   id: string;
   customerId: string;
   date: Date;
@@ -139,7 +142,7 @@ export interface UtangEntry {
   notes: string;
 }
 
-export interface Sale {
+export interface Sale extends SyncableEntity {
   id: string;
   date: Date;
   subtotal: number;
@@ -154,7 +157,18 @@ export interface Sale {
   voidReason?: string;
 }
 
-export interface SaleItem {
+export type SaleAdjustmentType = 'void' | 'refund' | 'reversal' | 'adjustment';
+
+export interface SaleAdjustment extends SyncableEntity {
+  id: string;
+  saleId: string;
+  type: SaleAdjustmentType;
+  amount: number;
+  reason: string;
+  date: Date;
+  itemQuantities: Record<string, number>;
+}
+export interface SaleItem extends SyncableEntity {
   id: string;
   saleId: string;
   itemId: string; // productId or serviceId
@@ -167,7 +181,7 @@ export interface SaleItem {
   batchId?: string; // Which batch was deducted (if product)
 }
 
-export interface GCashTransaction {
+export interface GCashTransaction extends SyncableEntity {
   id: string;
   date: Date;
   type: 'cash-in' | 'cash-out' | 'sale' | 'increase' | 'decrease' | 'adjustment';
@@ -178,7 +192,7 @@ export interface GCashTransaction {
   notes: string;
 }
 
-export interface Bill {
+export interface Bill extends SyncableEntity {
   id: string;
   name: string;
   category: string;
@@ -193,7 +207,7 @@ export interface Bill {
   notes: string;
 }
 
-export interface Employee {
+export interface Employee extends SyncableEntity {
   id: string;
   name: string;
   role: string;
@@ -205,7 +219,7 @@ export interface Employee {
   notes: string;
 }
 
-export interface PayrollEntry {
+export interface PayrollEntry extends SyncableEntity {
   id: string;
   employeeId: string;
   payPeriodStart: Date;
@@ -219,7 +233,7 @@ export interface PayrollEntry {
   notes: string;
 }
 
-export interface VaultTransaction {
+export interface VaultTransaction extends SyncableEntity {
   id: string;
   date: Date;
   type: 'opening' | 'deposit' | 'withdrawal' | 'sale-deposit' | 'expense' | 'payroll' | 'adjustment';
@@ -228,7 +242,7 @@ export interface VaultTransaction {
   notes: string;
 }
 
-export interface Supplier {
+export interface Supplier extends SyncableEntity {
   id: string;
   name: string;
   contactPerson: string;
@@ -238,7 +252,7 @@ export interface Supplier {
   notes: string;
 }
 
-export interface Note {
+export interface Note extends SyncableEntity {
   id: string;
   title: string;
   content: string;
@@ -248,7 +262,7 @@ export interface Note {
   updatedAt: Date;
 }
 
-export interface AuditLog {
+export interface AuditLog extends SyncableEntity {
   id: string;
   date: Date;
   action: string;

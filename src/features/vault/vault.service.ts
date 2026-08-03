@@ -1,25 +1,23 @@
-import { db } from '@/db/database';
-import { VaultTransaction } from '@/types';
-import { generateId } from '@/shared/utils/id';
+import { vaultTransactionRepo } from '@/repositories/FinancialRepository';
+import type { VaultTransaction } from '@/types';
 
 export class VaultService {
   async getBalance(): Promise<number> {
-    const all = await db.vaultTransactions.toArray();
-    return all.reduce((sum, tx) => sum + tx.amount, 0);
+    const all = await vaultTransactionRepo.list();
+    return all.reduce((sum, transaction) => sum + transaction.amount, 0);
   }
 
   async getRecentTransactions(limit = 50): Promise<VaultTransaction[]> {
-    return await db.vaultTransactions.orderBy('date').reverse().limit(limit).toArray();
+    return (await vaultTransactionRepo.list())
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .slice(0, limit);
   }
 
-  async addTransaction(data: Omit<VaultTransaction, 'id' | 'date'>): Promise<string> {
-    const id = generateId();
-    await db.vaultTransactions.add({
+  async addTransaction(data: Omit<VaultTransaction, 'id' | 'date' | 'sync'>): Promise<string> {
+    return vaultTransactionRepo.add({
       ...data,
-      id,
-      date: new Date()
+      date: new Date(),
     });
-    return id;
   }
 }
 

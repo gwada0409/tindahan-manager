@@ -1,49 +1,188 @@
 import { create } from 'zustand';
-import { AuthState, LoginCredentials } from './auth.types';
+import type { Permission, UserRole } from '@/types';
+import type { AuthResolution, AuthState } from './auth.types';
 import { authService } from './auth.service';
 import { hasRolePermission } from './permissions';
-import { Permission } from '@/types';
 
-export const useAuthStore = create<AuthState>((set, get) => ({
-  user: null,
-  profile: null,
-  status: 'loading',
-  error: null,
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
 
-  login: async (credentials: LoginCredentials) => {
+function resolutionState(resolution: AuthResolution): Partial<AuthState> {
+  if (resolution.status === 'unauthenticated') {
+    return {
+      user: null,
+      pendingIdentity: null,
+      memberships: [],
+      status: 'unauthenticated',
+      sessionMode: null,
+    };
+  }
+
+  if (resolution.status === 'selecting-store') {
+    return {
+      user: null,
+      pendingIdentity: resolution.identity,
+      memberships: resolution.memberships,
+      status: 'selecting-store',
+      sessionMode: 'online',
+    };
+  }
+
+  return {
+    user: resolution.user,
+    pendingIdentity: null,
+    memberships: resolution.memberships,
+    status: resolution.status,
+    sessionMode: resolution.status === 'offline' ? 'offline' : 'online',
+  };
+}
+
+let initializationPromise: Promise<void> | null = null;
+
+export const useAuthStore = create<AuthState>((set, get) => {
+  const refreshSession = async () => {
     set({ status: 'loading', error: null });
     try {
-      const user = await authService.login(credentials);
-      set({ user, status: 'authenticated', error: null });
-    } catch (err: any) {
-      set({ status: 'unauthenticated', error: err.message || 'Login failed' });
-      throw err;
+      const resolution = await authService.restoreSession();
+      set({
+        ...resolutionState(resolution),
+        error: null,
+        notice: resolution.status === 'offline'
+          ? 'Working offline using the last verified account session.'
+          : null,
+      });
+    } catch (error) {
+      set({
+        user: null,
+        pendingIdentity: null,
+        memberships: [],
+        status: 'unauthenticated',
+        sessionMode: null,
+        error: getErrorMessage(error, 'Session restoration failed.'),
+      });
     }
-  },
+  };
 
-  logout: async () => {
-    set({ status: 'loading' });
-    await authService.logout();
-    set({ user: null, profile: null, status: 'unauthenticated', error: null });
-  },
+  return {
+    user: null,
+    profile: null,
+    pendingIdentity: null,
+    memberships: [],
+    status: 'loading',
+    sessionMode: null,
+    error: null,
+    notice: null,
 
-  refreshProfile: async () => {
-    set({ status: 'loading' });
-    try {
-      const user = await authService.getSession();
-      if (user) {
-        set({ user, status: 'authenticated', error: null });
-      } else {
-        set({ user: null, status: 'unauthenticated', error: null });
+    initialize: async () => {
+      if (!initializationPromise) {
+        initializationPromise = refreshSession().finally(() => {
+          initializationPromise = null;
+        });
       }
-    } catch (err) {
-      set({ user: null, status: 'unauthenticated', error: null });
-    }
-  },
+      await initializationPromise;
+    },
 
-  hasPermission: (permission: Permission) => {
-    const user = get().user;
-    if (!user) return false;
-    return hasRolePermission(user.role, permission);
-  }
-}));
+    login: async (credentials) => {
+      set({ status: 'loading', error: null, notice: null });
+      try {
+        const resolution = await authService.login(credentials);
+        set({ ...resolutionState(resolution), error: null });
+      } catch (error) {
+        set({ user: null, pendingIdentity: null, memberships: [], status: 'unauthenticated', sessionMode: null, error: getErrorMessage(error, 'Login failed') });
+        throw error;
+      }
+    },
+
+    loginDevelopment: async (role: UserRole) => {
+      set({ status: 'loading', error: null, notice: null });
+      try {
+        const resolution = await authService.loginDevelopment(role);
+        set({
+          ...resolutionState(resolution),
+          sessionMode: 'development',
+          error: null,
+          notice: 'Development quick access is active. This is not a cloud account.',
+        });
+      } catch (error) {
+        set({ user: null, pendingIdentity: null, memberships: [], status: 'unauthenticated', sessionMode: null, error: getErrorMessage(error, 'Development login failed') });
+        throw error;
+      }
+    },
+
+    signup: async (details) => {
+      set({ status: 'loading', error: null, notice: null });
+      try {
+        const result = await authService.signup(details);
+        if (result.resolution) {
+          set({ ...resolutionState(result.resolution), error: null });
+        } else {
+          set({
+            status: 'unauthenticated',
+            error: null,
+            notice: 'Check your email to confirm the account before signing in.',
+          });
+        }
+        return result;
+      } catch (error) {
+        set({ user: null, pendingIdentity: null, memberships: [], status: 'unauthenticated', sessionMode: null, error: getErrorMessage(error, 'Signup failed') });
+        throw error;
+      }
+    },
+
+    requestPasswordReset: async (email) => {
+      try {
+        await authService.requestPasswordReset(email);
+        set({ notice: 'If the account exists, a password-reset email has been sent.', error: null });
+      } catch (error) {
+        set({ error: getErrorMessage(error, 'Password reset request failed') });
+        throw error;
+      }
+    },
+
+    updatePassword: async (password) => {
+      try {
+        await authService.updatePassword(password);
+        set({ notice: 'Password updated. You can continue using your account.', error: null });
+      } catch (error) {
+        set({ error: getErrorMessage(error, 'Password update failed') });
+        throw error;
+      }
+    },
+
+    selectStore: async (storeId) => {
+      const { pendingIdentity, memberships } = get();
+      if (!pendingIdentity) throw new Error('No account is waiting for store selection.');
+      set({ status: 'loading', error: null });
+      try {
+        const resolution = await authService.selectStore(pendingIdentity, memberships, storeId);
+        set({ ...resolutionState(resolution), error: null });
+      } catch (error) {
+        set({ status: 'selecting-store', error: getErrorMessage(error, 'Store selection failed') });
+        throw error;
+      }
+    },
+
+    logout: async () => {
+      set({ status: 'loading', error: null });
+      await authService.logout();
+      set({
+        user: null,
+        profile: null,
+        pendingIdentity: null,
+        memberships: [],
+        status: 'unauthenticated',
+        sessionMode: null,
+        error: null,
+        notice: null,
+      });
+    },
+
+    refreshProfile: refreshSession,
+
+    hasPermission: (permission: Permission) => {
+      const user = get().user;
+      return user ? hasRolePermission(user.role, permission) : false;
+    },
+  };
+});

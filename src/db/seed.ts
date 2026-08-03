@@ -1,5 +1,7 @@
 import { db } from './database';
 import { generateId } from '@/shared/utils/id';
+import { createSyncMetadata } from '@/domain/sync/syncMetadata';
+import { getOrCreateDeviceId } from '@/services/device/deviceIdentityService';
 
 /**
  * Seeds the database with development/demo data.
@@ -22,6 +24,10 @@ export async function seedDatabase() {
       }
 
       console.log('Seeding demo database inside an atomic transaction...');
+      const sync = () => createSyncMetadata({
+        storeId: 'store-demo-1',
+        deviceId: getOrCreateDeviceId(),
+      });
 
       // Seed Store Settings
       await db.storeSettings.put({
@@ -34,7 +40,8 @@ export async function seedDatabase() {
         timezone: 'Asia/Manila',
         expirationWarningDays: 30,
         allowNegativeInventory: false,
-        themePreference: 'light'
+        themePreference: 'light',
+        sync: sync(),
       });
 
       // Seed Categories
@@ -42,9 +49,9 @@ export async function seedDatabase() {
       const catSnacks = 'cat-snacks-demo';
       const catCanned = 'cat-canned-demo';
       await db.categories.bulkPut([
-        { id: catDrinks, name: 'Beverages' },
-        { id: catSnacks, name: 'Snacks' },
-        { id: catCanned, name: 'Canned Goods' }
+        { id: catDrinks, name: 'Beverages', sync: sync() },
+        { id: catSnacks, name: 'Snacks', sync: sync() },
+        { id: catCanned, name: 'Canned Goods', sync: sync() }
       ]);
 
       // Seed Products
@@ -60,7 +67,8 @@ export async function seedDatabase() {
           sellingPrice: 8500, // 85.00
           reorderLevel: 10,
           description: 'Classic Coca Cola',
-          active: true
+          active: true,
+          sync: sync(),
         },
         {
           id: generateId(),
@@ -73,7 +81,8 @@ export async function seedDatabase() {
           sellingPrice: 2800,
           reorderLevel: 20,
           description: 'Cheese flavored potato crisps',
-          active: true
+          active: true,
+          sync: sync(),
         },
         {
           id: generateId(),
@@ -86,7 +95,8 @@ export async function seedDatabase() {
           sellingPrice: 4500,
           reorderLevel: 15,
           description: 'Tuna flakes',
-          active: true
+          active: true,
+          sync: sync(),
         }
       ]);
 
@@ -100,6 +110,7 @@ export async function seedDatabase() {
           creditLimit: 200000,
           notes: 'Trusted customer',
           active: true,
+          sync: sync(),
           createdAt: new Date()
         },
         {
@@ -110,6 +121,7 @@ export async function seedDatabase() {
           creditLimit: 500000,
           notes: '',
           active: true,
+          sync: sync(),
           createdAt: new Date()
         }
       ]);

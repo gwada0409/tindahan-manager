@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
+import { userProfileRepo } from '@/repositories/EntityRepositories';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/Table';
 import { Button } from '@/components/ui/Button';
@@ -14,7 +14,7 @@ import { Shield, UserPlus, KeyRound } from 'lucide-react';
 
 export function Employees() {
   const employees = useLiveQuery(() => employeesService.getEmployees(), []);
-  const userProfiles = useLiveQuery(() => db.userProfiles.toArray(), []);
+  const userProfiles = useLiveQuery(() => userProfileRepo.list(), []);
 
   const { showToast } = useToast();
   

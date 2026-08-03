@@ -12,6 +12,17 @@ dist
 dist-ssr
 *.local
 
+# Local environment files (keep committed examples)
+.env
+.env.local
+.env.development.local
+.env.production.local
+.env.*.local
+!.env.example
+
+# Local package-manager cache
+.pnpm-store/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

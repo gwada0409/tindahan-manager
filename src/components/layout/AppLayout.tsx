@@ -16,12 +16,16 @@ import {
   Menu,
   Settings,
   LogOut,
-  User
+  User,
+  ShieldAlert
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/features/auth/auth.store';
 import { APP_ROUTES } from '@/features/auth/routes';
 import { BrandingProvider } from '@/features/settings/BrandingProvider';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { countPendingLocalChanges } from '@/features/auth/pendingChanges';
+import { SyncStatusIndicator } from '@/components/SyncStatusIndicator';
 
 const ICON_MAP: Record<string, any> = {
   LayoutDashboard,
@@ -34,11 +38,14 @@ const ICON_MAP: Record<string, any> = {
   Users,
   Wallet,
   BarChart3,
+  ShieldAlert,
   Settings
 };
 
 export function AppLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
+  const [showLogoutWarning, setShowLogoutWarning] = React.useState(false);
+  const [pendingChangeCount, setPendingChangeCount] = React.useState(0);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -54,9 +61,19 @@ export function AppLayout() {
     return route ? route.label : appName;
   };
 
-  const handleLogout = async () => {
+  const completeLogout = async () => {
     await logout();
     navigate('/login', { replace: true });
+  };
+
+  const requestLogout = async () => {
+    const count = await countPendingLocalChanges();
+    setPendingChangeCount(count);
+    if (count > 0) {
+      setShowLogoutWarning(true);
+      return;
+    }
+    await completeLogout();
   };
 
   return (
@@ -99,12 +116,12 @@ export function AppLayout() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-semibold text-foreground truncate">{user?.displayName || 'Guest User'}</div>
-                <div className="text-xs text-muted-foreground capitalize font-mono">{user?.role || 'employee'}</div>
+                <div className="text-xs text-muted-foreground capitalize font-mono">{user?.membershipRole || user?.role || 'employee'}</div>
               </div>
             </div>
 
             <button
-              onClick={handleLogout}
+              onClick={() => void requestLogout()}
               className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
             >
               <LogOut className="w-4 h-4 shrink-0" />
@@ -167,12 +184,12 @@ export function AppLayout() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold text-foreground truncate">{user?.displayName}</div>
-                      <div className="text-xs text-muted-foreground capitalize font-mono">{user?.role}</div>
+                      <div className="text-xs text-muted-foreground capitalize font-mono">{user?.membershipRole || user?.role}</div>
                     </div>
                   </div>
 
                   <button
-                    onClick={() => { setIsMobileMenuOpen(false); handleLogout(); }}
+                    onClick={() => { setIsMobileMenuOpen(false); void requestLogout(); }}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-base font-medium text-destructive hover:bg-destructive/10 transition-colors"
                   >
                     <LogOut className="w-5 h-5 shrink-0" />
@@ -188,11 +205,13 @@ export function AppLayout() {
             <h1 className="text-2xl font-bold text-foreground tracking-tight">{getPageTitle()}</h1>
             <div className="flex items-center gap-3">
               <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-primary/15 text-primary border border-primary/20 capitalize font-mono">
-                {user?.role || 'employee'}
+                {user?.membershipRole || user?.role || 'employee'}
               </span>
               <span className="text-sm font-medium text-foreground">{user?.displayName}</span>
             </div>
           </header>
+
+          <div className="flex items-center justify-end border-b border-border bg-white px-4 py-2" role="status"><SyncStatusIndicator /></div>
 
           <main className="flex-1 overflow-y-auto bg-background p-4 md:p-8 pb-20 md:pb-8">
             <Outlet />
@@ -229,6 +248,15 @@ export function AppLayout() {
           </button>
         </nav>
       </div>
+      <ConfirmModal
+        isOpen={showLogoutWarning}
+        onClose={() => setShowLogoutWarning(false)}
+        onConfirm={() => void completeLogout()}
+        title="Log out with pending local changes?"
+        description={`${pendingChangeCount} local change${pendingChangeCount === 1 ? '' : 's'} have not been synchronized. Logging out preserves the data on this device, but it will not be available from another device yet.`}
+        confirmText="Log out"
+        variant="destructive"
+      />
     </BrandingProvider>
   );
 }

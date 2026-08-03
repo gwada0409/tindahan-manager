@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { Product } from '@/types';
-import { db } from '@/db/database';
+import { inventoryRepo } from '@/features/inventory/inventory.repository';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
-import { generateId } from '@/shared/utils/id';
 
 export interface RestockModalProps {
   isOpen: boolean;
@@ -42,46 +41,13 @@ export function RestockModal({ isOpen, onClose, product, onRestockComplete }: Re
 
     try {
       setIsSubmitting(true);
-      const batchId = generateId();
-      const movementId = generateId();
-      const now = new Date();
-
-      await db.transaction('rw', [db.inventoryBatches, db.stockMovements, db.auditLogs], async () => {
-        // Create Inventory Batch
-        await db.inventoryBatches.add({
-          id: batchId,
-          productId: product.id,
-          quantityReceived: qty,
-          remainingQuantity: qty,
-          unitCost: cost,
-          restockDate: now,
-          expirationDate: expirationDate ? new Date(expirationDate) : undefined,
-          supplierId: product.supplierId,
-          referenceNumber: referenceNumber || `RESTOCK-${Date.now().toString().slice(-6)}`,
-          notes
-        });
-
-        // Create Stock Movement
-        await db.stockMovements.add({
-          id: movementId,
-          productId: product.id,
-          batchId,
-          type: 'restock',
-          quantity: qty,
-          date: now,
-          referenceId: batchId,
-          notes: `Restocked ${qty} ${product.unit || 'units'}. Ref: ${referenceNumber || 'N/A'}`
-        });
-
-        // Log Audit Event
-        await db.auditLogs.add({
-          id: generateId(),
-          date: now,
-          action: 'inventory:restock',
-          entityType: 'product',
-          entityId: product.id,
-          details: JSON.stringify({ productName: product.name, qty, unitCost: cost })
-        });
+      await inventoryRepo.restockProduct({
+        product,
+        quantityReceived: qty,
+        unitCost: cost,
+        expirationDate: expirationDate ? new Date(expirationDate) : undefined,
+        referenceNumber,
+        notes,
       });
 
       showToast(`Added ${qty} ${product.unit || 'units'} to ${product.name}!`, 'success');
@@ -92,7 +58,7 @@ export function RestockModal({ isOpen, onClose, product, onRestockComplete }: Re
       setNotes('');
       onClose();
       if (onRestockComplete) onRestockComplete();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       showToast('Failed to add stock batch', 'error');
     } finally {

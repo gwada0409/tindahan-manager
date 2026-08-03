@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
 import { Product, StockStatus } from '@/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -15,6 +14,8 @@ import { ProductList } from '@/features/inventory/components/ProductList';
 import { ProductForm } from '@/features/inventory/components/ProductForm';
 import { RestockModal } from '@/features/inventory/components/RestockModal';
 import { stockService } from '@/features/inventory/stock.service';
+import { inventoryRepo } from '@/features/inventory/inventory.repository';
+import { inventoryLedgerService } from '@/features/inventory/inventoryLedger.service';
 
 type SortOption = 'lowest-qty' | 'highest-qty' | 'name' | 'nearest-expiration' | 'reorder-priority';
 type StockFilter = 'all' | 'out-of-stock' | 'critical' | 'low-stock' | 'in-stock' | 'expiring-soon';
@@ -35,8 +36,9 @@ export function Inventory() {
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const { showToast } = useToast();
 
-  const products = useLiveQuery(() => db.products.toArray(), []) || [];
-  const inventoryBatches = useLiveQuery(() => db.inventoryBatches.toArray(), []) || [];
+  const products = useLiveQuery(() => productRepo.list(), []) || [];
+  const inventoryBatches = useLiveQuery(() => inventoryRepo.listBatches(), []) || [];
+  const reconciliationIssues = useLiveQuery(() => inventoryLedgerService.reconcile(), []) || [];
 
   // Reactive bulk stock calculation
   const stockSummaries = React.useMemo(() => {
@@ -185,12 +187,8 @@ export function Inventory() {
 
   const handleDeleteConfirm = async () => {
     if (deletingProductId) {
-      if (productRepo.delete) {
-        await productRepo.delete(deletingProductId);
-      } else {
-        await db.products.delete(deletingProductId);
-      }
-      showToast('Product deleted!');
+      await productRepo.softDelete(deletingProductId);
+      showToast('Product archived!');
       setDeletingProductId(null);
     }
   };
@@ -287,6 +285,19 @@ export function Inventory() {
         </Card>
       </div>
 
+      {reconciliationIssues.length > 0 && (
+        <Card className="border-amber-400 bg-amber-50">
+          <CardContent className="p-4">
+            <div className="font-semibold text-amber-950">Inventory reconciliation: {reconciliationIssues.length} {reconciliationIssues.length === 1 ? 'batch discrepancy' : 'batch discrepancies'}</div>
+            <p className="mt-1 text-sm text-amber-900">Cached quantities differ from the immutable movement ledger. Existing history is not changed automatically.</p>
+            <div className="mt-2 space-y-1 text-xs text-amber-950">
+              {reconciliationIssues.slice(0, 5).map((issue) => (
+                <div key={issue.batchId}>Batch {issue.batchId.slice(0, 8)}: cached {issue.cachedQuantity}, ledger {issue.movementQuantity}, difference {issue.difference}</div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {/* Controls & Search */}
       <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4">
         <div className="flex flex-col sm:flex-row gap-2 flex-1">
@@ -406,8 +417,8 @@ export function Inventory() {
         isOpen={!!deletingProductId}
         onClose={() => setDeletingProductId(null)}
         onConfirm={handleDeleteConfirm}
-        title="Delete Product"
-        description="Are you sure you want to delete this product? This action cannot be undone."
+        title="Archive Product"
+        description="Archive this product? Its history will be preserved, and it will no longer appear in active inventory."
       />
 
       {/* Barcode Scanner Modal */}
