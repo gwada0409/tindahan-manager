@@ -31,6 +31,7 @@ export class SyncEngine {
       if(!await this.adapter.verifySession()){const now=new Date().toISOString();const result={attempted:0,processed:0,failed:0,pulled:0,skippedReason:'Authentication required. Sign in online to resume cloud sync.'}; this.publish({...this.snapshot,activity:'offline',pending:await this.queue.count(context.storeId),lastResult:result,message:result.skippedReason,lastConnectivityCheckAt:now}); return result;}
       const connectivityCheckedAt=new Date().toISOString();
       if(!await this.adapter.isReachable(context.storeId)){const result={attempted:0,processed:0,failed:0,pulled:0,skippedReason:'Cloud connection is temporarily unavailable. Your work remains saved on this device.'}; this.publish({...this.snapshot,activity:'offline',pending:await this.queue.count(context.storeId),lastResult:result,message:result.skippedReason,lastConnectivityCheckAt:connectivityCheckedAt}); return result;}
+      if(reason==='manual')await this.queue.retryFailed(context.storeId);
       await this.queue.recover();
       await this.queue.adoptUnassignedChanges(context.storeId,context.userId,context.deviceId);
       await this.queue.repairLegacyProductReferences(context.storeId,context.userId,context.deviceId);

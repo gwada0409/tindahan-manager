@@ -23,6 +23,7 @@ An authenticated browser without a local `storeSettings` row used `local-store-u
 - Final create/merge validation now rejects only shrinking baseline counts or tracked totals. Records pulled from cloud or written locally while a migration was paused are additive and no longer cause a false inventory-batch validation failure.
 - Every authenticated sync attempt repairs a local or queued product whose category is the legacy `default` marker, reuses an existing synchronized General category when available, and immediately resets failed product, inventory, and sale dependencies for retry. This repair also runs before account linking reaches complete.
 - Cloud push RPCs now execute dependency groups in the order master data, inventory restocks/movements, completed sales, financial records, then sale compensation. A product and batch therefore exist before dependent inventory or sale operations are submitted.
+- A user-initiated Retry sync resets retry eligibility for failed operations in the selected store before pushing. Background attempts still use exponential backoff, so a manual retry no longer reports success while leaving one failed change waiting.
 
 ## Data safety
 

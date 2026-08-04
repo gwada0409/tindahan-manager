@@ -186,6 +186,7 @@ export class SyncQueueRepository {
     });
     return productIds.size;
   }
+  async retryFailed(storeId: string): Promise<number> { return this.queueService.retryFailed(storeId); }
   async recover(): Promise<number> { return this.queueService.recoverStuckProcessing(); }
   async ready(storeId: string, limit: number): Promise<SyncQueueItem[]> {
     return (await this.queueService.listReady()).filter((item) => item.storeId === storeId).sort((a,b) => a.createdAt.localeCompare(b.createdAt)).slice(0, limit);

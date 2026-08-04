@@ -160,7 +160,7 @@ Supported changes upload first, then download incrementally using a server-gener
 
 ## Sync status and troubleshooting
 
-The global status control reports **Offline mode**, **Online**, **Pending changes**, **Syncing**, **Synced**, **Sync failed**, **Authentication required**, **Conflict detected**, or **Cloud unavailable**. Expand it to see the pending count, last successful synchronization, failed items and retry count, connectivity/push/pull times, pull cursor, device ID, and app version. **Retry sync** starts the same authenticated push-then-pull workflow used by automatic synchronization.
+The global status control reports **Offline mode**, **Online**, **Pending changes**, **Syncing**, **Synced**, **Sync failed**, **Authentication required**, **Conflict detected**, or **Cloud unavailable**. Expand it to see the pending count, last successful synchronization, failed items and retry count, connectivity/push/pull times, pull cursor, device ID, and app version. **Retry sync** starts the authenticated push-then-pull workflow and immediately releases failed items for that store from retry backoff; automatic background attempts retain exponential backoff.
 
 **Offline does not mean unsaved.** Business writes commit to IndexedDB on this device first. Supported cloud changes remain in the durable queue until acknowledged. Keep the browser storage intact and reconnect later.
 

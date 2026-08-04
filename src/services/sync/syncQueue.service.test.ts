@@ -78,7 +78,11 @@ describe('durable sync queue', () => {
     expect(failed).toMatchObject({ attempts: 1, status: 'failed', lastError: 'offline' });
     expect(failed?.nextAttemptAt).toBe(new Date(now.getTime() + retryDelayMs(1)).toISOString());
     expect(await service.listReady(now)).toEqual([]);
-    expect(await service.listReady(new Date(now.getTime() + retryDelayMs(1)))).toHaveLength(1);
+    expect(await service.retryFailed('other-store')).toBe(0);
+    expect(await service.retryFailed('store-queue')).toBe(1);
+    expect(await service.listReady(now)).toHaveLength(1);
+    expect(await queue.get(key)).toMatchObject({ status: 'pending', attempts: 1 });
+    expect((await queue.get(key))?.nextAttemptAt).toBeUndefined();
   });
 
   it('recovers processing items left behind by an interrupted run', async () => {

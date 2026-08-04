@@ -29,11 +29,11 @@ describe('push synchronization',()=>{
 
   it('checks session and reachability before recovery and upload',async()=>{
     const order:string[]=[];
-    const queue={count:vi.fn().mockResolvedValue(1),recover:vi.fn(async()=>{order.push('recover');return 0;}),adoptUnassignedChanges:vi.fn(async()=>{order.push('adopt');return 0;}),repairLegacyProductReferences:vi.fn(async()=>{order.push('repair');return 0;}),ready:vi.fn(async()=>{order.push('ready');return [];}),markProcessing:vi.fn(),acknowledge:vi.fn(),markFailed:vi.fn()} as unknown as SyncQueueRepository;
+    const queue={count:vi.fn().mockResolvedValue(1),retryFailed:vi.fn(async()=>{order.push('manual-retry');return 0;}),recover:vi.fn(async()=>{order.push('recover');return 0;}),adoptUnassignedChanges:vi.fn(async()=>{order.push('adopt');return 0;}),repairLegacyProductReferences:vi.fn(async()=>{order.push('repair');return 0;}),ready:vi.fn(async()=>{order.push('ready');return [];}),markProcessing:vi.fn(),acknowledge:vi.fn(),markFailed:vi.fn()} as unknown as SyncQueueRepository;
     const adapter:SyncAdapter={verifySession:vi.fn(async()=>{order.push('session');return true;}),isReachable:vi.fn(async()=>{order.push('reachability');return true;}),push:vi.fn(),pull:vi.fn()};
     const engine=new SyncEngine(queue,adapter,()=>({storeId:'store-1',userId:'user-1',deviceId:'device-1',onlineSession:true}));
     expect(await engine.run('manual')).toMatchObject({attempted:0,processed:0,failed:0});
-    expect(order).toEqual(['session','reachability','recover','adopt','repair','ready']);
+    expect(order).toEqual(['session','reachability','manual-retry','recover','adopt','repair','ready']);
   });
 
   it('keeps interval checks local while idle and refreshes after the stale threshold',async()=>{

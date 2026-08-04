@@ -26,6 +26,12 @@ export class SyncQueueService {
     return [...pending, ...failed.filter((item) => !item.nextAttemptAt || Date.parse(item.nextAttemptAt) <= nowMs)];
   }
 
+  async retryFailed(storeId: string): Promise<number> {
+    const failed = (await this.table.where('status').equals('failed').toArray())
+      .filter((item) => item.storeId === storeId && item.queueId !== undefined);
+    await this.table.bulkUpdate(failed.map((item) => ({ key: item.queueId!, changes: { status: 'pending' as const, nextAttemptAt: undefined } })));
+    return failed.length;
+  }
   async markProcessing(queueId: number, now = new Date()): Promise<void> {
     const item = await this.table.get(queueId);
     if (!item) throw new Error(`Missing sync queue item: ${queueId}`);
