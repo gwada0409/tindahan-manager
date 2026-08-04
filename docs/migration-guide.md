@@ -36,7 +36,7 @@ A failed run retains its backup, processed-table list, queue entries, and error.
 
 ## Validation
 
-For create and merge modes, every pre-migration table count and tracked total must match afterward. Download mode records its resulting counts and totals but intentionally replaces the active working set after explicit confirmation.
+For create and merge modes, every pre-migration table count and tracked total must remain at least as large afterward. Additive cloud pulls and local writes made while a resumable migration is paused are accepted; any shrink still fails validation. Download mode records its resulting counts and totals but intentionally replaces the active working set after explicit confirmation.
 
 ## Recovery
 

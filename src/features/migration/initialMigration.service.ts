@@ -718,14 +718,15 @@ export class InitialMigrationService {
         for (const [name, count] of Object.entries(state.countsBefore)) {
           const expected = name === 'stockMovements' ? count + generatedMovements : count;
           const actual = after.counts[name] ?? 0;
-          // Audit history is append-only and authentication/device events can be
-          // recorded while migration is in progress. Never allow it to shrink.
-          if (name === 'auditLogs' ? actual < expected : actual !== expected) {
+          // Resumed and merge migrations can legitimately gain local rows through
+          // cloud pull or writes made while a previous attempt was paused. Validation
+          // therefore rejects data loss but accepts additive records.
+          if (actual < expected) {
             throw new Error(`Count validation failed for ${name}.`);
           }
         }
         for (const [name, total] of Object.entries(state.totalsBefore)) {
-          if ((after.totals[name] ?? 0) !== total) throw new Error(`Total validation failed for ${name}.`);
+          if ((after.totals[name] ?? 0) < total) throw new Error(`Total validation failed for ${name}.`);
         }
       }
       state = {
