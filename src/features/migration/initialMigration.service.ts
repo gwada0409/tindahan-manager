@@ -292,6 +292,44 @@ export class InitialMigrationService {
     return state;
   }
 
+  private async acknowledgeAlreadyUploadedMasterOperations(targetStoreId: string): Promise<number> {
+    if (!this.adapter) return 0;
+    const tableNames: Record<string, string> = {
+      product_categories: 'categories',
+      suppliers: 'suppliers',
+      products: 'products',
+      customers: 'customers',
+    };
+    const queued = (await this.database.syncQueue.where('storeId').equals(targetStoreId).toArray())
+      .filter((item) => Boolean(tableNames[item.entityType]) && item.queueId !== undefined);
+    if (!queued.length) return 0;
+
+    const remote = await this.remoteChanges(targetStoreId);
+    const matches = queued.flatMap((item) => {
+      const change = remote.find((candidate) => candidate.entityType === item.entityType && candidate.record.id === item.entityId);
+      const payload = item.payload as Row;
+      const sync = payload.sync;
+      if (!change || !sync) return [];
+      const record = change.record;
+      const sameVersion = record.version === sync.version;
+      const sameDevice = record.device_id === sync.deviceId;
+      const sameEditor = record.updated_by === sync.updatedBy;
+      const sameUpdatedAt = typeof record.updated_at === 'string' && Date.parse(record.updated_at) === Date.parse(sync.updatedAt);
+      return sameVersion && sameDevice && sameEditor && sameUpdatedAt ? [{ item, tableName: tableNames[item.entityType] }] : [];
+    });
+    if (!matches.length) return 0;
+
+    const tables = [...new Set(matches.map(({ tableName }) => this.database.table(tableName)))];
+    await this.database.transaction('rw', [...tables, this.database.syncQueue], async () => {
+      for (const { item, tableName } of matches) {
+        const table = this.database.table(tableName);
+        const current = await table.get(item.entityId) as Row | undefined;
+        if (current?.sync) await table.update(item.entityId, { sync: { ...current.sync, syncStatus: 'synced', baseVersion: null } });
+        await this.database.syncQueue.delete(item.queueId!);
+      }
+    });
+    return matches.length;
+  }
   private async queueInventoryAndSales(
     state: InitialMigrationState,
     targetStoreId: string,
@@ -626,6 +664,7 @@ export class InitialMigrationService {
 
       state = { ...state, status: 'syncing', updatedAt: nowUtcIso() };
       await this.database.migrationState.put(state);
+      await this.acknowledgeAlreadyUploadedMasterOperations(targetStoreId);
       let queueDrained = false;
       for (let attempt = 0; attempt < 100; attempt++) {
         const result = await runSync();

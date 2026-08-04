@@ -17,6 +17,7 @@ An authenticated browser without a local `storeSettings` row used `local-store-u
 - Confirmed inventory-operation receipts now release their local batch metadata before pull, preventing a successful restock from being misclassified as a concurrent-edit conflict and blocking the following sale.
 - Inventory-batch conflicts can now be resolved explicitly with the existing keep-device or keep-cloud controls; ledger and financial records remain protected.
 - Initial migration waits for queued retry eligibility instead of exhausting its batch loop immediately, and reports the failed entity plus the server-safe reason when an operation is rejected.
+- A resumed migration recognizes an already-uploaded master record only when its UUID, version, editor, device, and update timestamp all match; it then acknowledges the stale local queue receipt without rewriting cloud data.
 
 ## Data safety
 
@@ -27,5 +28,5 @@ The repair does not delete or replace local or cloud business rows. Automatic ad
 The regression suite covers authenticated context selection, device-scoped queue adoption, nested sale payload repair, legacy category repair, queue ordering, and the normal sync lifecycle. Live diagnostics before deployment confirmed the affected account had four active device registrations but zero cloud catalog, inventory, sale, or operation rows, matching the stranded-local-queue failure mode. Post-deployment testing confirmed that a newly created product and its restock reached Supabase; that test exposed and led to the inventory receipt-acknowledgement repair above.
 
 - TypeScript project build passes.
-- Vitest passes: 40 files and 139 tests.
+- Vitest passes: 40 files and 140 tests.
 - Production/PWA build passes: 2,875 modules and 10 precache entries.
