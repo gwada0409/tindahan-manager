@@ -113,7 +113,22 @@ export class SyncQueueRepository {
     const queueId=item.queueId;
     const localTableName:Record<string,string>={product_categories:'categories',suppliers:'suppliers',products:'products',customers:'customers'};
     const tableName=localTableName[item.entityType];
-    if(!tableName){await this.queueService.acknowledge(queueId);return;}
+    if(!tableName){
+      const payload=item.payload as {batch?:{id?:string;sync?:{version?:number}};movement?:{batchId?:string}};
+      const batchId=item.entityType==='inventory_restock' ? payload.batch?.id : item.entityType==='inventory_movement' ? payload.movement?.batchId : undefined;
+      if(!batchId){await this.queueService.acknowledge(queueId);return;}
+      await this.database.transaction('rw',[this.database.syncQueue,this.database.inventoryBatches],async()=>{
+        const current=await this.database.inventoryBatches.get(batchId);
+        if(current?.sync){
+          const pushedVersion=payload.batch?.sync?.version;
+          if(pushedVersion===undefined||current.sync.version>=pushedVersion){
+            await this.database.inventoryBatches.update(batchId,{sync:{...current.sync,syncStatus:'synced',baseVersion:null}});
+          }
+        }
+        await this.database.syncQueue.delete(queueId);
+      });
+      return;
+    }
     const entityTable=this.database.table(tableName);
     await this.database.transaction('rw',[this.database.syncQueue,entityTable],async()=>{
       const current=await entityTable.get(item.entityId) as {sync?:{version:number;syncStatus:string;baseVersion:number|null}}|undefined;

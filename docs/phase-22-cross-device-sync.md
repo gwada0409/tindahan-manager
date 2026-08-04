@@ -14,6 +14,7 @@ An authenticated browser without a local `storeSettings` row used `local-store-u
 - Products using the legacy `default` category marker are moved to a stable UUID General category. The category operation is queued before products.
 - New products automatically create and synchronize that General category when no category is supplied.
 - Authentication failures and logout clear the repository context so one account cannot leak into a later local session.
+- Confirmed inventory-operation receipts now release their local batch metadata before pull, preventing a successful restock from being misclassified as a concurrent-edit conflict and blocking the following sale.
 
 ## Data safety
 
@@ -21,8 +22,8 @@ The repair does not delete or replace local or cloud business rows. Automatic ad
 
 ## Verification
 
-The regression suite covers authenticated context selection, device-scoped queue adoption, nested sale payload repair, legacy category repair, queue ordering, and the normal sync lifecycle. Live diagnostics before deployment confirmed the affected account had four active device registrations but zero cloud catalog, inventory, sale, or operation rows, matching the stranded-local-queue failure mode.
+The regression suite covers authenticated context selection, device-scoped queue adoption, nested sale payload repair, legacy category repair, queue ordering, and the normal sync lifecycle. Live diagnostics before deployment confirmed the affected account had four active device registrations but zero cloud catalog, inventory, sale, or operation rows, matching the stranded-local-queue failure mode. Post-deployment testing confirmed that a newly created product and its restock reached Supabase; that test exposed and led to the inventory receipt-acknowledgement repair above.
 
 - TypeScript project build passes.
-- Vitest passes: 40 files and 136 tests.
-- Production/PWA build passes: 2,869 modules and 10 precache entries.
+- Vitest passes: 40 files and 137 tests.
+- Production/PWA build passes: 2,875 modules and 10 precache entries.

@@ -121,4 +121,23 @@ describe('unassigned queue recovery', () => {
     expect(await database.sales.get(sale.id)).toMatchObject({ sync: { storeId: 'store-cloud', updatedBy: 'user-1' } });
     expect(await database.syncQueue.where('storeId').equals(UNASSIGNED_LOCAL_STORE_ID).count()).toBe(1);
   });
+  it('acknowledges inventory operations and releases the local batch for pull', async () => {
+    database = new TindahanDB('queue-inventory-ack-' + crypto.randomUUID());
+    await database.open();
+    const batchId = crypto.randomUUID();
+    const queueId = await database.syncQueue.add({
+      operationId: crypto.randomUUID(), storeId: 'store-cloud', entityType: 'inventory_restock', entityId: batchId,
+      operation: 'transaction', payload: { batch: { id: batchId, sync: { version: 1 } }, movement: { batchId } },
+      createdAt: new Date().toISOString(), attempts: 0, status: 'processing',
+    });
+    await database.inventoryBatches.put({
+      id: batchId, productId: crypto.randomUUID(), quantityReceived: 5, remainingQuantity: 5, unitCost: 100,
+      restockDate: new Date(), referenceNumber: '', notes: '',
+      sync: { ...pendingSync('device-mobile'), storeId: 'store-cloud', updatedBy: 'user-1' },
+    });
+    const item = await database.syncQueue.get(queueId);
+    await new SyncQueueRepository(database).acknowledge(item!);
+    expect(await database.syncQueue.get(queueId)).toBeUndefined();
+    expect(await database.inventoryBatches.get(batchId)).toMatchObject({sync:{syncStatus:'synced',baseVersion:null}});
+  });
 });
