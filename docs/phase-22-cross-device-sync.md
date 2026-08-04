@@ -21,6 +21,8 @@ An authenticated browser without a local `storeSettings` row used `local-store-u
 - When the recorded pre-migration count for a master table is zero, a same-ID cloud row is authoritative even if account-reset metadata differs; the stale queue receipt is removed without deleting or rewriting that cloud row.
 - A resumed migration also acknowledges a same-ID, same-version category, supplier, product, or customer when all synchronized business fields match, even if receipt editor, device, or timestamp metadata changed. Different business content remains queued and is never overwritten automatically.
 - Final create/merge validation now rejects only shrinking baseline counts or tracked totals. Records pulled from cloud or written locally while a migration was paused are additive and no longer cause a false inventory-batch validation failure.
+- Every authenticated sync attempt repairs a local or queued product whose category is the legacy `default` marker, reuses an existing synchronized General category when available, and immediately resets failed product, inventory, and sale dependencies for retry. This repair also runs before account linking reaches complete.
+- Cloud push RPCs now execute dependency groups in the order master data, inventory restocks/movements, completed sales, financial records, then sale compensation. A product and batch therefore exist before dependent inventory or sale operations are submitted.
 
 ## Data safety
 
@@ -31,5 +33,5 @@ The repair does not delete or replace local or cloud business rows. Automatic ad
 The regression suite covers authenticated context selection, device-scoped queue adoption, nested sale payload repair, legacy category repair, queue ordering, and the normal sync lifecycle. Live diagnostics before deployment confirmed the affected account had four active device registrations but zero cloud catalog, inventory, sale, or operation rows, matching the stranded-local-queue failure mode. Post-deployment testing confirmed that a newly created product and its restock reached Supabase; that test exposed and led to the inventory receipt-acknowledgement repair above.
 
 - TypeScript project build passes.
-- Vitest passes: 40 files and 147 tests.
+- Vitest passes: 41 files and 149 tests.
 - Production/PWA build passes: 2,875 modules and 10 precache entries.

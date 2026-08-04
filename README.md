@@ -2,7 +2,7 @@
 
 Tindahan Manager is a local-first point-of-sale and store-management Progressive Web App for small retail and sari-sari store operations. It uses React, TypeScript, Vite, Dexie/IndexedDB, Zustand, Tailwind CSS, and optional Supabase services.
 
-Phase 22 repairs cross-device writes created after account linking: authenticated repository writes now use the selected cloud store even when local store settings are absent, stranded per-device queue entries are adopted safely, products without a category receive a synchronized General category, acknowledged inventory operations no longer create false pull conflicts before a sale, migration retries respect queue backoff while exposing the failed entity reason, interrupted same-version uploads are acknowledged without overwriting cloud data, and an empty recorded local baseline safely accepts its cloud-origin copy after an account reset.
+Phase 22 repairs cross-device writes created after account linking: authenticated repository writes use the selected cloud store even when local store settings are absent, stranded per-device queue entries are adopted safely, every authenticated push repairs legacy `default` product-category references even during an incomplete migration, dependent inventory and sale retries run only after master data and inventory prerequisites, acknowledged inventory operations no longer create false pull conflicts, and interrupted same-version uploads are reconciled without overwriting different cloud data.
 
 Phase 21 completes account-linking upload and multi-device pull for inventory and completed sales, and adds owner-controlled restoration for revoked device registrations without deleting business data.
 

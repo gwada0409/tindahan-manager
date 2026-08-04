@@ -44,7 +44,7 @@ Versioned mutable synchronization covers products, product categories, customers
 
 ## Phase 8 push behavior
 
-The engine verifies local context, a valid Supabase session, authenticated reachability, and crash recovery before sending dependency-aware batches. The RPC validates membership, device, store/payload identity, entity type, format, and record versions. Only server-confirmed operation IDs are acknowledged locally.
+The engine verifies local context, a valid Supabase session, authenticated reachability, and crash recovery before sending dependency-aware batches. Before each push it repairs the legacy `default` product-category marker in both IndexedDB rows and durable queue payloads, then clears retry backoff for affected inventory and sale dependencies. RPC groups execute master data first, followed by inventory, completed sales, financial records, and compensation. The RPC validates membership, device, store/payload identity, entity type, format, and record versions. Only server-confirmed operation IDs are acknowledged locally.
 
 Automatic attempts occur after verified startup/sign-in, browser online events, every 60 seconds while open, and 1.5 seconds after a queued mutation. The layout provides **Sync now**. Concurrent triggers share one active run, and synchronization failures are retained rather than thrown into local workflows.
 

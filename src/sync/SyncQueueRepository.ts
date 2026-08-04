@@ -12,6 +12,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof Date);
 }
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function containsUnassignedDevice(value: unknown, deviceId: string): boolean {
   if (Array.isArray(value)) return value.some((entry) => containsUnassignedDevice(entry, deviceId));
   if (!isRecord(value)) return false;
@@ -101,6 +103,88 @@ export class SyncQueueRepository {
       }
     });
     return adoptedQueue.length;
+  }
+  async repairLegacyProductReferences(storeId: string, userId: string, deviceId: string): Promise<number> {
+    const targetQueue = await this.database.syncQueue.where('storeId').equals(storeId).toArray();
+    const localProducts = await this.database.products.toArray();
+    const productIds = new Set<string>();
+    for (const product of localProducts) if (product.categoryId === 'default') productIds.add(product.id);
+    for (const item of targetQueue) {
+      const payload = isRecord(item.payload) ? item.payload : undefined;
+      if (item.entityType === 'products' && payload?.categoryId === 'default') productIds.add(item.entityId);
+    }
+    if (!productIds.size) return 0;
+
+    const now = nowUtcIso();
+    await this.database.transaction('rw', [this.database.categories, this.database.products, this.database.syncQueue], async () => {
+      const queueCategory = async (categoryId: string): Promise<string> => {
+        let category = await this.database.categories.get(categoryId);
+        if (category?.sync && ![storeId, UNASSIGNED_LOCAL_STORE_ID].includes(category.sync.storeId)) category = undefined;
+        if (!category) {
+          const candidates = await this.database.categories.toArray();
+          category = candidates.find((candidate) => uuidPattern.test(candidate.id) && candidate.name.trim().toLowerCase() === GENERAL_CATEGORY_NAME.toLowerCase() && (!candidate.sync || [storeId, UNASSIGNED_LOCAL_STORE_ID].includes(candidate.sync.storeId)));
+        }
+        if (!category) {
+          category = {
+            id: generateId(),
+            name: GENERAL_CATEGORY_NAME,
+            sync: createSyncMetadata({ storeId, deviceId, updatedBy: userId, createdAt: now, updatedAt: now }),
+          };
+          await this.database.categories.put(category);
+        }
+        const metadata = category.sync;
+        const needsUpload = metadata?.storeId !== storeId || metadata.syncStatus !== 'synced';
+        const normalizedCategory = needsUpload
+          ? {
+              ...category,
+              sync: metadata?.storeId === storeId
+                ? { ...metadata, deviceId, updatedBy: userId, syncStatus: 'pending' as const }
+                : createSyncMetadata({ storeId, deviceId, updatedBy: userId, createdAt: metadata?.createdAt ?? now, updatedAt: metadata?.updatedAt ?? now }),
+            }
+          : category;
+        if (needsUpload) await this.database.categories.put(normalizedCategory);
+        const queuedCategory = (await this.database.syncQueue.where('storeId').equals(storeId).toArray())
+          .find((item) => item.entityType === 'product_categories' && item.entityId === normalizedCategory.id);
+        if (needsUpload && queuedCategory?.queueId !== undefined) {
+          await this.database.syncQueue.update(queuedCategory.queueId, { payload: normalizedCategory, status: 'pending', attempts: 0, nextAttemptAt: undefined, lastAttemptAt: undefined, lastError: undefined });
+        } else if (needsUpload) {
+          await this.database.syncQueue.add({ operationId: generateId(), storeId, entityType: 'product_categories', entityId: normalizedCategory.id, operation: 'upsert', payload: normalizedCategory, createdAt: now, attempts: 0, status: 'pending' });
+        }
+        return normalizedCategory.id;
+      };
+
+      for (const productId of productIds) {
+        const local = await this.database.products.get(productId);
+        const queuedProducts = (await this.database.syncQueue.where('storeId').equals(storeId).toArray())
+          .filter((item) => item.entityType === 'products' && item.entityId === productId);
+        const queuedPayload = queuedProducts.map((item) => item.payload).find(isRecord);
+        const localCategoryId = local?.categoryId;
+        let categoryId = typeof localCategoryId === 'string' && uuidPattern.test(localCategoryId) && await this.database.categories.get(localCategoryId)
+          ? localCategoryId
+          : undefined;
+        if (!categoryId) categoryId = await queueCategory(typeof queuedPayload?.categoryId === 'string' ? queuedPayload.categoryId : GENERAL_CATEGORY_ID);
+        else await queueCategory(categoryId);
+
+        const source = local ?? queuedPayload;
+        if (!source) continue;
+        const metadata = isRecord(source.sync) ? source.sync : undefined;
+        const sync = metadata?.storeId === storeId
+          ? { ...metadata, deviceId, updatedBy: userId, syncStatus: 'pending' as const }
+          : createSyncMetadata({ storeId, deviceId, updatedBy: userId, createdAt: typeof metadata?.createdAt === 'string' ? metadata.createdAt : now, updatedAt: typeof metadata?.updatedAt === 'string' ? metadata.updatedAt : now });
+        const repaired = { ...source, id: productId, categoryId, sync };
+        if (local) await this.database.products.put(repaired as typeof local);
+        if (queuedProducts.length) {
+          for (const item of queuedProducts) if (item.queueId !== undefined) await this.database.syncQueue.update(item.queueId, { payload: repaired, status: 'pending', attempts: 0, nextAttemptAt: undefined, lastAttemptAt: undefined, lastError: undefined });
+        } else {
+          await this.database.syncQueue.add({ operationId: generateId(), storeId, entityType: 'products', entityId: productId, operation: 'upsert', payload: repaired, createdAt: now, attempts: 0, status: 'pending' });
+        }
+      }
+
+      const dependents = (await this.database.syncQueue.where('storeId').equals(storeId).toArray())
+        .filter((item) => item.queueId !== undefined && item.status === 'failed' && ['inventory_restock', 'inventory_movement', 'sale_transaction'].includes(item.entityType));
+      for (const item of dependents) await this.database.syncQueue.update(item.queueId!, { status: 'pending', attempts: 0, nextAttemptAt: undefined, lastAttemptAt: undefined, lastError: undefined });
+    });
+    return productIds.size;
   }
   async recover(): Promise<number> { return this.queueService.recoverStuckProcessing(); }
   async ready(storeId: string, limit: number): Promise<SyncQueueItem[]> {

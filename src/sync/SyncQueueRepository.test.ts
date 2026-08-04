@@ -121,7 +121,32 @@ describe('unassigned queue recovery', () => {
     expect(await database.sales.get(sale.id)).toMatchObject({ sync: { storeId: 'store-cloud', updatedBy: 'user-1' } });
     expect(await database.syncQueue.where('storeId').equals(UNASSIGNED_LOCAL_STORE_ID).count()).toBe(1);
   });
-  it('acknowledges inventory operations and releases the local batch for pull', async () => {
+  it('repairs a failed default-category product before retrying dependent inventory operations', async () => {
+    database = new TindahanDB(`queue-legacy-product-${crypto.randomUUID()}`);
+    await database.open();
+    const categoryId = crypto.randomUUID();
+    const productId = crypto.randomUUID();
+    const sync = { ...pendingSync('device-mobile'), storeId: 'store-cloud', updatedBy: 'user-1', syncStatus: 'synced' as const };
+    const product: Product = { id: productId, name: 'Mobile item', categoryId: 'default', barcode: '', sku: 'MOBILE-2', unit: 'piece', costPrice: 100, sellingPrice: 200, reorderLevel: 1, active: true, description: '', sync };
+    await database.categories.put({ id: categoryId, name: 'General', sync });
+    await database.products.put(product);
+    await database.syncQueue.bulkAdd([
+      { operationId: crypto.randomUUID(), storeId: 'store-cloud', entityType: 'products', entityId: productId, operation: 'upsert', payload: { ...product, categoryId: 'default' }, createdAt: sync.createdAt, attempts: 4, status: 'failed', lastError: 'invalid input syntax for type uuid: "default"' },
+      { operationId: crypto.randomUUID(), storeId: 'store-cloud', entityType: 'inventory_restock', entityId: crypto.randomUUID(), operation: 'transaction', payload: { batch: { productId }, movement: { productId } }, createdAt: sync.createdAt, attempts: 4, status: 'failed', lastError: 'Inventory operation failed (23503).' },
+      { operationId: crypto.randomUUID(), storeId: 'store-cloud', entityType: 'inventory_movement', entityId: crypto.randomUUID(), operation: 'transaction', payload: { movement: { productId } }, createdAt: sync.createdAt, attempts: 4, status: 'failed', lastError: 'Inventory operation failed (23503).' },
+    ]);
+
+    expect(await new SyncQueueRepository(database).repairLegacyProductReferences('store-cloud', 'user-1', 'device-mobile')).toBe(1);
+    const repaired = await database.syncQueue.where('storeId').equals('store-cloud').toArray();
+    expect((repaired.find((item) => item.entityType === 'products')?.payload as Product).categoryId).toBe(categoryId);
+    expect(await database.products.get(productId)).toMatchObject({ categoryId });
+    expect(repaired).toEqual(expect.arrayContaining([
+      expect.objectContaining({ entityType: 'products', status: 'pending', attempts: 0 }),
+      expect.objectContaining({ entityType: 'inventory_restock', status: 'pending', attempts: 0 }),
+      expect.objectContaining({ entityType: 'inventory_movement', status: 'pending', attempts: 0 }),
+    ]));
+    expect(repaired.every((item) => item.lastError === undefined)).toBe(true);
+  });  it('acknowledges inventory operations and releases the local batch for pull', async () => {
     database = new TindahanDB('queue-inventory-ack-' + crypto.randomUUID());
     await database.open();
     const batchId = crypto.randomUUID();

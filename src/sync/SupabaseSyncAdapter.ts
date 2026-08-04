@@ -39,30 +39,37 @@ export class SupabaseSyncAdapter implements SyncAdapter {
   }
   isReachable(storeId: string, timeoutMs?: number): Promise<boolean> { return checkAuthenticatedReachability(this.client, storeId, timeoutMs); }
   async push(operations: SyncQueueItem[]): Promise<PushResult[]> {
-    const masterOperations=operations.filter((item)=>!['sale_transaction','sale_compensation','inventory_restock','inventory_movement','utang_entries','gcash_transactions','bills','employees','payroll_entries','vault_transactions'].includes(item.entityType));
-    const saleOperations=operations.filter((item)=>item.entityType==='sale_transaction');
-    const results:PushResult[]=[];
-    if(masterOperations.length){
-      const {data,error}=await this.client.rpc('process_sync_operations',{p_operations:masterOperations as unknown as Json});
-      if(error)throw new Error(`Push request failed (${error.code??'unknown'}).`);
+    const transactionalTypes = ['sale_transaction', 'sale_compensation', 'inventory_restock', 'inventory_movement', 'utang_entries', 'gcash_transactions', 'bills', 'employees', 'payroll_entries', 'vault_transactions'];
+    const masterOperations = operations.filter((item) => !transactionalTypes.includes(item.entityType));
+    const results: PushResult[] = [];
+
+    if (masterOperations.length) {
+      const { data, error } = await this.client.rpc('process_sync_operations', { p_operations: masterOperations as unknown as Json });
+      if (error) throw new Error(`Push request failed (${error.code ?? 'unknown'}).`);
       results.push(...parseResults(data));
     }
-    for(const operation of saleOperations){
-      const {data,error}=await this.client.rpc('process_sale_transaction',{p_operation:operation as unknown as Json});
-      if(error){results.push({operationId:operation.operationId,status:'failed',errorCode:error.code,error:`Sale transaction failed (${error.code??'unknown'}).`});continue;}
+
+    for (const operation of operations.filter((item) => item.entityType === 'inventory_restock' || item.entityType === 'inventory_movement')) {
+      const { data, error } = await this.client.rpc('process_inventory_operation', { p_operation: operation as unknown as Json });
+      if (error) { results.push({ operationId: operation.operationId, status: 'failed', errorCode: error.code, error: `Inventory operation failed (${error.code ?? 'unknown'}).` }); continue; }
       results.push(...parseResults([data] as unknown as Json));
     }
-    for(const operation of operations.filter((item)=>['utang_entries','gcash_transactions','bills','employees','payroll_entries','vault_transactions'].includes(item.entityType))){
-      const {data,error}=await this.client.rpc('process_financial_operation',{p_operation:operation as unknown as Json});
-      if(error){results.push({operationId:operation.operationId,status:'failed',errorCode:error.code,error:'Financial operation failed ('+(error.code??'unknown')+').'});continue;}
+
+    for (const operation of operations.filter((item) => item.entityType === 'sale_transaction')) {
+      const { data, error } = await this.client.rpc('process_sale_transaction', { p_operation: operation as unknown as Json });
+      if (error) { results.push({ operationId: operation.operationId, status: 'failed', errorCode: error.code, error: `Sale transaction failed (${error.code ?? 'unknown'}).` }); continue; }
       results.push(...parseResults([data] as unknown as Json));
-    }    for(const operation of operations.filter((item)=>item.entityType==='inventory_restock'||item.entityType==='inventory_movement')){
-      const {data,error}=await this.client.rpc('process_inventory_operation',{p_operation:operation as unknown as Json});
-      if(error){results.push({operationId:operation.operationId,status:'failed',errorCode:error.code,error:'Inventory operation failed ('+(error.code??'unknown')+').'});continue;}
+    }
+
+    for (const operation of operations.filter((item) => ['utang_entries', 'gcash_transactions', 'bills', 'employees', 'payroll_entries', 'vault_transactions'].includes(item.entityType))) {
+      const { data, error } = await this.client.rpc('process_financial_operation', { p_operation: operation as unknown as Json });
+      if (error) { results.push({ operationId: operation.operationId, status: 'failed', errorCode: error.code, error: `Financial operation failed (${error.code ?? 'unknown'}).` }); continue; }
       results.push(...parseResults([data] as unknown as Json));
-    }    for(const operation of operations.filter((item)=>item.entityType==='sale_compensation')){
-      const {data,error}=await this.client.rpc('process_sale_compensation',{p_operation:operation as unknown as Json});
-      if(error){results.push({operationId:operation.operationId,status:'failed',errorCode:error.code,error:'Sale compensation failed ('+(error.code??'unknown')+').'});continue;}
+    }
+
+    for (const operation of operations.filter((item) => item.entityType === 'sale_compensation')) {
+      const { data, error } = await this.client.rpc('process_sale_compensation', { p_operation: operation as unknown as Json });
+      if (error) { results.push({ operationId: operation.operationId, status: 'failed', errorCode: error.code, error: `Sale compensation failed (${error.code ?? 'unknown'}).` }); continue; }
       results.push(...parseResults([data] as unknown as Json));
     }
     return results;
