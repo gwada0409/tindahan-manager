@@ -292,7 +292,7 @@ export class InitialMigrationService {
     return state;
   }
 
-  private async acknowledgeAlreadyUploadedMasterOperations(targetStoreId: string): Promise<number> {
+  private async acknowledgeAlreadyUploadedMasterOperations(targetStoreId: string, countsBefore: Record<string, number> = {}): Promise<number> {
     if (!this.adapter) return 0;
     const tableNames: Record<string, string> = {
       product_categories: 'categories',
@@ -315,7 +315,8 @@ export class InitialMigrationService {
       const sameDevice = record.device_id === sync.deviceId;
       const sameEditor = record.updated_by === sync.updatedBy;
       const sameUpdatedAt = typeof record.updated_at === 'string' && Date.parse(record.updated_at) === Date.parse(sync.updatedAt);
-      return sameVersion && sameDevice && sameEditor && sameUpdatedAt ? [{ item, tableName: tableNames[item.entityType] }] : [];
+      const emptyBaseline = (countsBefore[tableNames[item.entityType]] ?? 0) === 0;
+      return emptyBaseline || (sameVersion && sameDevice && sameEditor && sameUpdatedAt) ? [{ item, tableName: tableNames[item.entityType] }] : [];
     });
     if (!matches.length) return 0;
 
@@ -664,7 +665,7 @@ export class InitialMigrationService {
 
       state = { ...state, status: 'syncing', updatedAt: nowUtcIso() };
       await this.database.migrationState.put(state);
-      await this.acknowledgeAlreadyUploadedMasterOperations(targetStoreId);
+      await this.acknowledgeAlreadyUploadedMasterOperations(targetStoreId, state.countsBefore);
       let queueDrained = false;
       for (let attempt = 0; attempt < 100; attempt++) {
         const result = await runSync();
