@@ -43,6 +43,25 @@ const totalFields: Record<string, string[]> = {
 
 type Row = Record<string, unknown> & { id?: unknown; sync?: SyncMetadata };
 
+const masterRecordFields: Record<string, Array<[string, string]>> = {
+  product_categories: [['name', 'name']],
+  suppliers: [['name', 'name'], ['contactPerson', 'contact_person'], ['phone', 'phone'], ['email', 'email'], ['address', 'address'], ['notes', 'notes']],
+  products: [['name', 'name'], ['sku', 'sku'], ['barcode', 'barcode'], ['categoryId', 'category_id'], ['supplierId', 'supplier_id'], ['unit', 'unit'], ['costPrice', 'cost_price'], ['sellingPrice', 'selling_price'], ['reorderLevel', 'reorder_level'], ['description', 'description'], ['active', 'active']],
+  customers: [['fullName', 'full_name'], ['phoneNumber', 'phone_number'], ['address', 'address'], ['creditLimit', 'credit_limit'], ['notes', 'notes'], ['active', 'active']],
+};
+
+function sameMasterRecord(entityType: string, local: Row, remote: Record<string, unknown>): boolean {
+  const fields = masterRecordFields[entityType];
+  if (!fields) return false;
+  return fields.every(([localKey, remoteKey]) => {
+    const localValue = local[localKey] ?? null;
+    const remoteValue = remote[remoteKey] ?? null;
+    return typeof localValue === 'number' || typeof remoteValue === 'number'
+      ? Number(localValue) === Number(remoteValue)
+      : localValue === remoteValue;
+  });
+}
+
 function originalTime(row: Row, keys: string[]): string | undefined {
   for (const key of keys) {
     const value = row[key];
@@ -316,7 +335,8 @@ export class InitialMigrationService {
       const sameEditor = record.updated_by === sync.updatedBy;
       const sameUpdatedAt = typeof record.updated_at === 'string' && Date.parse(record.updated_at) === Date.parse(sync.updatedAt);
       const emptyBaseline = (countsBefore[tableNames[item.entityType]] ?? 0) === 0;
-      return emptyBaseline || (sameVersion && sameDevice && sameEditor && sameUpdatedAt) ? [{ item, tableName: tableNames[item.entityType] }] : [];
+      const sameContent = sameVersion && sameMasterRecord(item.entityType, payload, record);
+      return emptyBaseline || sameContent || (sameVersion && sameDevice && sameEditor && sameUpdatedAt) ? [{ item, tableName: tableNames[item.entityType] }] : [];
     });
     if (!matches.length) return 0;
 
