@@ -3,7 +3,7 @@ import type { ConflictResolution, SyncConflict, SyncMetadata } from '@/domain/sy
 
 const mutableTables: Record<string, string> = {
   product_categories: 'categories', suppliers: 'suppliers', products: 'products', customers: 'customers',
-  bills: 'bills', employees: 'employees',
+  bills: 'bills', employees: 'employees', inventory_batches: 'inventoryBatches',
 };
 const protectedEntities = new Set(['sale_transaction','sale_compensation','sales','stock_movements','inventory_movement','utang_entries','gcash_transactions','payroll_entries','vault_transactions']);
 

@@ -16,7 +16,11 @@ describe('conflict resolution', () => {
   await repository.resolve(id,'keep-cloud','admin-1');
   expect((await database!.categories.get('cat-1'))?.name).toBe('Cloud');expect(await database!.syncQueue.count()).toBe(0);expect((await database!.syncConflicts.get(id))?.resolved).toBe(true);expect((await database!.auditLogs.toArray())[0]?.action).toBe('resolve_sync_conflict');
  });
- it('rejects overwriting protected financial records',async()=>{
+ it('allows an inventory batch conflict to keep the cloud ledger snapshot',async()=>{
+  const repository=await setup();const local={id:'batch-1',productId:'product-1',quantityReceived:5,remainingQuantity:5,unitCost:100,restockDate:new Date(),referenceNumber:'',notes:'',sync:metadata};const remote={...local,remainingQuantity:0,sync:{...metadata,version:3,baseVersion:null,syncStatus:'synced' as const}};
+  await database!.inventoryBatches.put(local);const id=await repository.record({storeId:'store-1',entityType:'inventory_batches',entityId:'batch-1',detectedAt:new Date().toISOString(),localPayload:local,remotePayload:remote,localVersion:2,serverVersion:3});
+  await repository.resolve(id,'keep-cloud','admin-1');expect((await database!.inventoryBatches.get('batch-1'))?.remainingQuantity).toBe(0);expect((await database!.syncConflicts.get(id))?.resolved).toBe(true);
+ }); it('rejects overwriting protected financial records',async()=>{
   const repository=await setup();const id=await repository.record({storeId:'store-1',entityType:'utang_entries',entityId:'u-1',detectedAt:new Date().toISOString(),localPayload:{id:'u-1'},remotePayload:{id:'u-1'}});
   await expect(repository.resolve(id,'keep-cloud','admin-1')).rejects.toThrow('cannot be overwritten');expect((await database!.syncConflicts.get(id))?.resolved).toBe(false);
  });
