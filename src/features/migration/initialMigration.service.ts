@@ -629,12 +629,21 @@ export class InitialMigrationService {
       let queueDrained = false;
       for (let attempt = 0; attempt < 100; attempt++) {
         const result = await runSync();
-        if (result.skippedReason || result.failed) {
-          throw new Error(result.skippedReason ?? `${result.failed} operations remain queued.`);
+        if (result.skippedReason) throw new Error(result.skippedReason);
+        if (result.failed) {
+          const failed = await this.database.syncQueue.where('storeId').equals(targetStoreId).filter((item) => item.status === 'failed').toArray();
+          const details = failed.slice(0, 3).map((item) => `${item.entityType}: ${item.lastError ?? 'Cloud rejected the operation.'}`).join(' | ');
+          throw new Error(`${result.failed} operations remain queued${details ? ` — ${details}` : '.'}`);
         }
-        if ((await this.database.syncQueue.where('storeId').equals(targetStoreId).count()) === 0) {
+        const remaining = await this.database.syncQueue.where('storeId').equals(targetStoreId).toArray();
+        if (remaining.length === 0) {
           queueDrained = true;
           break;
+        }
+        if (result.attempted === 0) {
+          const nextRetry = remaining.flatMap((item) => item.nextAttemptAt ? [Date.parse(item.nextAttemptAt)] : []).sort((a, b) => a - b)[0];
+          const waitMs = Number.isFinite(nextRetry) ? Math.min(1_000, Math.max(50, nextRetry - Date.now())) : 50;
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
         }
       }
       if (!queueDrained) throw new Error('Initial migration exceeded the synchronization batch limit.');
